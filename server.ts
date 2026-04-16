@@ -181,7 +181,7 @@ async function startServer() {
       linkedin: {
         authUrl: 'https://www.linkedin.com/oauth/v2/authorization',
         tokenUrl: 'https://www.linkedin.com/oauth/v2/accessToken',
-        scope: 'openid profile email w_member_social w_organization_social'
+        scope: 'openid profile email w_member_social'
       },
       instagram: {
         authUrl: 'https://api.instagram.com/oauth/authorize',
