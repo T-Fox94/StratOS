@@ -216,31 +216,25 @@ async function startServer() {
         if (globalSettings) {
           const data = JSON.parse(globalSettings.data);
           if (data && data[platform]) {
-            clientId = data[platform].clientId;
-            clientSecret = data[platform].clientSecret;
+            clientId = clientId || data[platform].clientId;
+            clientSecret = clientSecret || data[platform].clientSecret;
             console.log(`[OAuth] Using global Prisma credentials for ${platform}`);
           }
-        } else {
-          console.log(`[OAuth] No global settings in Prisma, checking Firestore fallback...`);
-          try {
-            const settingsDoc = await adminDb.collection("settings").doc("oauth_credentials").get();
-            if (settingsDoc.exists) {
-              const data = settingsDoc.data();
-              if (data && data[platform]) {
-                clientId = data[platform].clientId;
-                clientSecret = data[platform].clientSecret;
-                console.log(`[OAuth] Using global Firestore credentials for ${platform}`);
-              }
-            }
-          } catch (fsError) {
-            console.warn("[OAuth] Global Firestore fallback failed (likely PERMISSION_DENIED):", fsError);
-          }
+        }
+        if (!clientId || !clientSecret) {
+          console.log(`[OAuth] Checking process.env final fallback for ${platform}`);
+          clientId = clientId || process.env[`${platform.toUpperCase()}_CLIENT_ID`];
+          clientSecret = clientSecret || process.env[`${platform.toUpperCase()}_CLIENT_SECRET`];
         }
       } catch (e) {
         console.error("[OAuth] Error fetching global credentials from Prisma:", e);
       }
     }
-    console.log(`[OAuth] Final credentials for ${platform}:`, { hasClientId: !!clientId, hasClientSecret: !!clientSecret });
+    console.log(`[OAuth] Final evaluation for ${platform}:`, {
+      hasClientId: !!clientId,
+      hasClientSecret: !!clientSecret,
+      envUsed: !clientId && !!process.env[`${platform.toUpperCase()}_CLIENT_ID`]
+    });
     const configs = {
       linkedin: {
         authUrl: "https://www.linkedin.com/oauth/v2/authorization",

@@ -1,0 +1,23 @@
+{
+  "name": "StratOS Agency OS",
+  "short_name": "StratOS",
+  "description": "Comprehensive Social Media Operations Management platform for creative agencies.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "https://picsum.photos/seed/stratos-icon-192/192/192",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://picsum.photos/seed/stratos-icon-512/512/512",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
