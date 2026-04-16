@@ -65,6 +65,11 @@ async function startServer() {
     const isShared = host.includes('ais-pre');
     const baseUrl = isShared ? SHARED_URL : APP_URL;
     
+    // DIAGNOSTIC LOG: Print visible environment keys for debugging
+    const visibleKeys = Object.keys(process.env).filter(k => k.includes(platform.toUpperCase()));
+    console.log(`[OAuth] Visible Environment Keys for ${platform}:`, visibleKeys);
+    console.log(`[OAuth] Raw platform string: "${platform}" (length: ${platform.length})`);
+    
     const redirectUri = `${baseUrl}/api/auth/${platform}/callback`;
     console.log(`[OAuth] Using redirect_uri: ${redirectUri}`);
     
