@@ -1,0 +1,8 @@
+{
+  "name": "StratOS Agency OS",
+  "description": "Comprehensive Social Media Operations Management platform for creative agencies with AI-powered crisis monitoring, scope guarding, and multi-platform content workflow.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

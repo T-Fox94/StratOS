@@ -1,0 +1,211 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields: email, displayName, role, clientId, createdAt
+    //
+    // Collection: clients
+    // Fields: name, industry, status, riskLevel, monthlyQuota, currentMonthUsage, logo, website, toneOfVoice, visualStyle, brandColors, approvedHashtags, doNotUse, createdBy, createdAt
+    //
+    // Collection: posts
+    // Fields: clientId, title, content, media, platforms, status, scheduledFor, publishedAt, aiAnalysis, createdBy, approvedBy
+    //
+    // Collection: crisis_events
+    // Fields: clientId, title, description, severity, status, createdAt
+    //
+    // Collection: social_accounts
+    // Fields: clientId, platform, handle, status, lastSynced, createdAt
+    //
+    // Collection: scope_requests
+    // Fields: clientId, type, description, amount, date, status, createdAt
+    //
+    // Collection: config
+    // Document: agency
+    // Fields: name, defaultHourlyRate, currency, timezone
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        (userExists() && getUserData().get('role', 'user') == 'admin') ||
+        (request.auth.token.get('email', '').lower() == "mubangaphiri94@gmail.com")
+      );
+    }
+
+    function isManager() {
+      return isAuthenticated() && userExists() && getUserData().role == 'manager';
+    }
+
+    function isEditor() {
+      return isAuthenticated() && userExists() && getUserData().role == 'editor';
+    }
+
+    function isClient() {
+      return isAuthenticated() && userExists() && getUserData().role == 'client';
+    }
+
+    function getClientScope() {
+      return getUserData().clientId;
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.email is string && 
+             data.role in ['admin', 'manager', 'editor', 'client'];
+    }
+
+    function isValidClient(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.status in ['active', 'paused', 'lead'];
+    }
+
+    function isValidPost(data) {
+      return data.clientId is string &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.status in ['draft', 'pending', 'scheduled', 'published', 'rejected', 'approved'];
+    }
+
+    function isValidCrisis(data) {
+      return data.clientId is string &&
+             data.title is string && data.title.size() > 0 &&
+             data.severity in ['low', 'medium', 'high'] &&
+             data.status in ['active', 'resolved'];
+    }
+
+    function isValidSocial(data) {
+      return data.clientId is string &&
+             data.platform in ['instagram', 'facebook', 'linkedin', 'tiktok', 'twitter'] &&
+             data.status in ['connected', 'expired', 'error'];
+    }
+
+    function isValidScope(data) {
+      return data.clientId is string &&
+             data.amount is number && data.amount >= 0 &&
+             data.status in ['unbilled', 'billed'];
+    }
+
+    function isValidNotification(data) {
+      return data.type in ['crisis', 'content', 'team', 'system'] &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.get('message', '') is string && data.get('message', '').size() < 1000 &&
+             data.read is bool &&
+             data.priority in ['high', 'medium', 'low'];
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Users
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) && request.resource.data.role == resource.data.role && isValidUser(request.resource.data)) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Clients
+    match /clients/{clientId} {
+      allow read: if isAuthenticated() && (!isClient() || getClientScope() == clientId);
+      allow create: if isAdmin() && isValidClient(request.resource.data);
+      allow update: if isAdmin() && isValidClient(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Posts
+    match /posts/{postId} {
+      allow read: if isAuthenticated() && (!isClient() || getClientScope() == resource.data.clientId);
+      allow create: if (isAdmin() || isManager() || isEditor()) && isValidPost(request.resource.data) && (request.resource.data.status == 'pending' || isAdmin());
+      allow update: if (isAdmin() || isManager() || isEditor()) && isValidPost(request.resource.data) && (
+        (request.resource.data.status == resource.data.status) || 
+        (request.resource.data.status == 'pending') || 
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Crisis Events
+    match /crisis_events/{eventId} {
+      allow read: if isAuthenticated() && (!isClient() || getClientScope() == resource.data.clientId);
+      allow create: if (isAdmin() || isManager() || isEditor()) && isValidCrisis(request.resource.data);
+      allow update: if (isAdmin() || isManager() || isEditor()) && isValidCrisis(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Social Accounts
+    match /social_accounts/{accountId} {
+      allow read: if isAuthenticated() && (!isClient() || getClientScope() == resource.data.clientId);
+      allow create: if isAdmin() && isValidSocial(request.resource.data);
+      allow update: if isAdmin() && isValidSocial(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Scope Requests
+    match /scope_requests/{requestId} {
+      allow read: if isAuthenticated() && (!isClient() || getClientScope() == resource.data.clientId);
+      allow create: if isAdmin() && isValidScope(request.resource.data);
+      allow update: if isAdmin() && isValidScope(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.get('userId', '') == request.auth.uid || 
+        (isClient() && resource.data.get('clientId', '') == getClientScope()) ||
+        isAdmin() || isManager()
+      );
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data);
+      allow update: if isAuthenticated() && (
+        resource.data.get('userId', '') == request.auth.uid || 
+        isAdmin()
+      ) && hasOnlyAllowedFields(['read']);
+      allow delete: if isAdmin() || resource.data.get('userId', '') == request.auth.uid;
+    }
+
+    // Config
+    match /config/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Settings (Sensitive)
+    match /settings/{docId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

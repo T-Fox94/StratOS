@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">StratOS Agency OS</string>
+    <string name="title_activity_main">StratOS Agency OS</string>
+    <string name="package_name">com.stratos.agencyos</string>
+    <string name="custom_url_scheme">com.stratos.agencyos</string>
+</resources>

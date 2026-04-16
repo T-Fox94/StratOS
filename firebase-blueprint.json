@@ -1,0 +1,191 @@
+{
+  "entities": {
+    "Client": {
+      "title": "Client",
+      "description": "A client managed by the agency",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "industry": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "paused", "lead"] },
+        "riskLevel": { "type": "string", "enum": ["low", "medium", "high"] },
+        "monthlyQuota": { "type": "integer" },
+        "currentMonthUsage": { "type": "integer" },
+        "logo": { "type": "string" },
+        "website": { "type": "string" },
+        "toneOfVoice": { "type": "string" },
+        "visualStyle": { "type": "string" },
+        "brandColors": { "type": "array", "items": { "type": "string" } },
+        "approvedHashtags": { "type": "array", "items": { "type": "string" } },
+        "doNotUse": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "industry", "status", "createdBy"]
+    },
+    "SocialAccount": {
+      "title": "Social Account",
+      "description": "A connected social media account for a client",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "platform": { "type": "string", "enum": ["instagram", "facebook", "linkedin", "tiktok", "twitter"] },
+        "handle": { "type": "string" },
+        "status": { "type": "string", "enum": ["connected", "expired", "error"] },
+        "accessToken": { "type": "string", "description": "Encrypted or secure token" },
+        "refreshToken": { "type": "string" },
+        "tokenExpiresAt": { "type": "string", "format": "date-time" },
+        "lastSynced": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "platform", "handle", "status"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "A social media post",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "media": { "type": "array", "items": { "type": "string" } },
+        "platforms": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "published", "rejected", "approved"] },
+        "scheduledFor": { "type": "string", "format": "date-time" },
+        "publishedAt": { "type": "string", "format": "date-time" },
+        "aiAnalysis": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "approvedBy": { "type": "string" }
+      },
+      "required": ["clientId", "title", "content", "status", "createdBy"]
+    },
+    "User": {
+      "title": "User",
+      "description": "A user of the StratOS platform",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "manager", "client"] },
+        "clientId": { "type": "string", "description": "Associated client ID for users with 'client' role" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role"]
+    },
+    "CrisisEvent": {
+      "title": "Crisis Event",
+      "description": "A critical brand issue",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+        "status": { "type": "string", "enum": ["active", "resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "title", "description", "severity", "status"]
+    },
+    "ScopeRequest": {
+      "title": "Scope Request",
+      "description": "An out-of-scope request",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "type": { "type": "string" },
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["unbilled", "billed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "type", "description", "amount", "date", "status"]
+    },
+    "AgencySettings": {
+      "title": "Agency Settings",
+      "description": "Global agency configuration",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "defaultHourlyRate": { "type": "number" },
+        "currency": { "type": "string" },
+        "timezone": { "type": "string" }
+      },
+      "required": ["name", "defaultHourlyRate", "currency", "timezone"]
+    },
+    "ClientSocialConfig": {
+      "title": "Client Social Config",
+      "description": "Client-specific API keys and secrets for social platforms",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "facebookAppId": { "type": "string" },
+        "facebookAppSecret": { "type": "string", "description": "Encrypted or secure secret" },
+        "instagramAppId": { "type": "string" },
+        "instagramAppSecret": { "type": "string" },
+        "linkedinClientId": { "type": "string" },
+        "linkedinClientSecret": { "type": "string" },
+        "tiktokKey": { "type": "string" },
+        "tiktokSecret": { "type": "string" },
+        "twitterClientId": { "type": "string" },
+        "twitterClientSecret": { "type": "string" },
+        "fbVerifyToken": { "type": "string", "description": "Webhook verification token for Facebook/Instagram" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification for a user or client",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["crisis", "content", "team", "system"] },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "time": { "type": "string", "format": "date-time" },
+        "read": { "type": "boolean" },
+        "priority": { "type": "string", "enum": ["high", "medium", "low"] },
+        "clientId": { "type": "string" },
+        "userId": { "type": "string", "description": "Target user ID" }
+      },
+      "required": ["type", "title", "message", "time", "read", "priority"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/clients/{clientId}": {
+      "schema": "Client",
+      "description": "Collection of clients"
+    },
+    "/social_accounts/{accountId}": {
+      "schema": "SocialAccount",
+      "description": "Social accounts for clients"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Posts for clients"
+    },
+    "/crisis_events/{eventId}": {
+      "schema": "CrisisEvent",
+      "description": "Crisis events for clients"
+    },
+    "/scope_requests/{requestId}": {
+      "schema": "ScopeRequest",
+      "description": "Out-of-scope requests for clients"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Notifications for users"
+    },
+    "/config/agency": {
+      "schema": "AgencySettings",
+      "description": "Global agency configuration"
+    },
+    "/client_social_configs/{clientId}": {
+      "schema": "ClientSocialConfig",
+      "description": "Client-specific API keys and secrets"
+    }
+  }
+}

@@ -1,0 +1,152 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id    String @id @default(cuid())
+  name  String
+  email String @unique
+  role  String @default("user")
+}
+
+model Client {
+  id                  String          @id @default(cuid())
+  name                String
+  slug                String          @unique
+  industry            String
+  logo                String?
+  status              String          @default("active") // active, paused, lead
+  riskLevel           String          @default("low")    // low, medium, high
+  monthlyQuota        Int             @default(20)
+  currentMonthUsage   Int             @default(0)
+  socialAccounts      SocialAccount[]
+  posts               Post[]
+  crisisEvents        CrisisEvent[]
+  scopeRequests       ScopeRequest[]
+  clientSocialConfig  ClientSocialConfig?
+  webhookEvents       WebhookEvent[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+}
+
+model SocialAccount {
+  id                String    @id @default(cuid())
+  platform          String    // instagram, linkedin, twitter, facebook, tiktok
+  handle            String
+  platformAccountId String?   // The ID from the platform (e.g. IG user ID)
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         DateTime?
+  status            String    @default("connected") // connected, expired, disconnected
+  clientId          String
+  client            Client    @relation(fields: [clientId], references: [id])
+}
+
+model WebhookEvent {
+  id          String   @id @default(cuid())
+  platform    String   // instagram, facebook, linkedin, tiktok
+  eventType   String
+  rawData     String   // JSON string of full payload
+  processed   Boolean  @default(false)
+  clientId    String?
+  relatedId   String?
+  createdAt   DateTime @default(now())
+  
+  client      Client?  @relation(fields: [clientId], references: [id])
+}
+
+model Post {
+  id           String   @id @default(cuid())
+  title        String
+  caption      String
+  mediaUrl     String?
+  platform     String
+  status       String   @default("draft") // draft, pending, approved, scheduled, published
+  scheduledFor DateTime?
+  approvedBy   String?
+  clientId     String
+  client       Client   @relation(fields: [clientId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model CrisisEvent {
+  id            String   @id @default(cuid())
+  title         String
+  description   String
+  severity      String   @default("medium") // critical, high, medium, low
+  status        String   @default("active") // active, monitoring, resolved
+  responseDraft String?
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model AgentTask {
+  id           String   @id @default(cuid())
+  name         String
+  type         String   // MONITOR_COMMENTS, MONITOR_MENTIONS, etc.
+  status       String   @default("idle") // active, paused, running, failed
+  interval     String
+  successCount Int      @default(0)
+  failureCount Int      @default(0)
+  totalRuns    Int      @default(0)
+  enabled      Boolean  @default(true)
+  lastRun      DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Trend {
+  id             String   @id @default(cuid())
+  name           String
+  description    String
+  platform       String
+  relevanceScore Int      @default(0)
+  riskLevel      String   @default("low")
+  createdAt      DateTime @default(now())
+}
+
+model ScopeRequest {
+  id             String   @id @default(cuid())
+  title          String
+  description    String
+  billed         Boolean  @default(false)
+  estimatedHours Float    @default(0)
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id])
+  createdAt      DateTime @default(now())
+}
+
+model ClientSocialConfig {
+  id                  String   @id @default(cuid())
+  clientId            String   @unique
+  facebookAppId       String?
+  facebookAppSecret   String?
+  instagramAppId      String?
+  instagramAppSecret  String?
+  linkedinClientId    String?
+  linkedinClientSecret String?
+  tiktokKey           String?
+  tiktokSecret        String?
+  twitterClientId     String?
+  twitterClientSecret String?
+  fbVerifyToken       String?
+  updatedAt           DateTime @updatedAt
+  client              Client   @relation(fields: [clientId], references: [id])
+}
+
+model GlobalSettings {
+  id        String   @id @default("global")
+  data      String   // JSON string of settings
+  updatedAt DateTime @updatedAt
+}
