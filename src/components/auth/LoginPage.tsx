@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { LogIn, ShieldCheck, Mail, Lock, User, ArrowRight, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
+import { Capacitor } from '@capacitor/core';
 
 type AuthMode = 'login' | 'register' | 'forgot-password' | 'verify-email';
 
@@ -214,7 +215,7 @@ export function LoginPage() {
           )}
         </div>
 
-        {mode === 'login' && (
+        {mode === 'login' && Capacitor.getPlatform() === 'web' && (
           <>
             <div className="relative py-4">
               <div className="absolute inset-0 flex items-center">

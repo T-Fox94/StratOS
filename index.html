@@ -12,19 +12,45 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>console.log("VERIFIED_BUILD_V1.1_PATH_DOWNLOADS");</script>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(registration => {
-              console.log('SW registered: ', registration);
-            })
-            .catch(registrationError => {
-              console.log('SW registration failed: ', registrationError);
-            });
-        });
-      }
+      // Diagnostic Error Catcher for Mobile Debugging
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        var message = [
+          'Message: ' + msg,
+          'URL: ' + url,
+          'Line: ' + lineNo,
+          'Column: ' + columnNo,
+          'Error object: ' + JSON.stringify(error)
+        ].join('\n');
+        
+        // Show as alert on mobile for visibility
+        if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+          alert("CRITICAL ERROR:\n" + message);
+        }
+        console.error(message);
+        return false;
+      };
+
+      // SELF-DESTRUCT: Forcefully remove existing Service Workers and clear Caches
+      // This fixes the "Zombie Cache" issue where an old index.html is stuck in the WebView.
+      (function() {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(var registration of registrations) {
+              registration.unregister();
+              console.log('ServiceWorker unregistered');
+            }
+          });
+        }
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            for (var name of names) caches.delete(name);
+            console.log('Caches cleared');
+          });
+        }
+      })();
     </script>
   </body>
 </html>

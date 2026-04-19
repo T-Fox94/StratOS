@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "645192182585",
+    "firebase_url": "https://stratos-1d3dd-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "stratos-1d3dd",
+    "storage_bucket": "stratos-1d3dd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:645192182585:android:b7f9e5f1319df24a3dd6e8",
+        "android_client_info": {
+          "package_name": "com.stratos.agencyos"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "645192182585-tm9dunrr0ii9ccgcq7p03cjp2f1dants.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDD2kKnABnupb259twVMj0TPrf_srlSmVY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "645192182585-tm9dunrr0ii9ccgcq7p03cjp2f1dants.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

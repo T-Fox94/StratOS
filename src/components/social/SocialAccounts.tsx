@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
+import { App } from '@capacitor/app';
 import { 
   Instagram, 
   Linkedin, 
@@ -130,7 +133,39 @@ export function SocialAccounts() {
     };
 
     window.addEventListener('message', handleOAuthMessage);
-    return () => window.removeEventListener('message', handleOAuthMessage);
+
+    // 2. Handle Native Mobile Deep Links (Capacitor)
+    const setupDeepLinkListener = async () => {
+      if (!Capacitor.isNativePlatform()) return;
+
+      const listener = await App.addListener('appUrlOpen', async (data) => {
+        // Expected URL: com.stratos.agencyos://oauth-callback?platform=linkedin&status=success...
+        if (data.url.includes('oauth-callback')) {
+          const url = new URL(data.url);
+          const params = new URLSearchParams(url.search);
+          const platform = params.get('platform');
+          const status = params.get('status');
+          const handle = params.get('handle');
+
+          if (status === 'success') {
+            toast.success(`${platform} account connected successfully!`);
+            // Close the native browser tab
+            await Browser.close();
+          } else {
+            toast.error(`Failed to connect ${platform} account.`);
+          }
+        }
+      });
+
+      return listener;
+    };
+
+    const deepLinkListenerPromise = setupDeepLinkListener();
+
+    return () => {
+      window.removeEventListener('message', handleOAuthMessage);
+      deepLinkListenerPromise.then(l => l?.remove());
+    };
   }, [currentClient, addSocialAccount]);
 
   const isAdmin = profile?.role === 'admin';
@@ -182,7 +217,7 @@ export function SocialAccounts() {
     
     try {
       // Fetch the OAuth URL from our server
-      const response = await fetch(getApiUrl(`/api/auth/${platform}?clientId=${currentClient.id}`));
+      const response = await fetch(getApiUrl(`/api/auth/${platform}?clientId=${currentClient.id}&mobile=${Capacitor.isNativePlatform()}`));
       if (!response.ok) {
         const error = await response.json();
         toast.error(error.error || 'Failed to initiate connection');
@@ -191,12 +226,17 @@ export function SocialAccounts() {
       
       const { url } = await response.json();
       
-      // Open the OAuth provider's URL directly in popup
-      window.open(
-        url,
-        'oauth_popup',
-        'width=600,height=700'
-      );
+      if (Capacitor.isNativePlatform()) {
+        // Native Mobile: Use Capacitor Browser to handle the OAuth flow securely
+        await Browser.open({ url });
+      } else {
+        // Web: Use a standard popup
+        window.open(
+          url,
+          'oauth_popup',
+          'width=600,height=700'
+        );
+      }
     } catch (error) {
       console.error('Connection error:', error);
       toast.error('An error occurred while connecting.');

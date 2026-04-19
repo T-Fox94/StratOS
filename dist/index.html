@@ -4,28 +4,54 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StratOS Agency OS</title>
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#4f46e5" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="apple-touch-icon" href="https://picsum.photos/seed/stratos-icon-192/192/192" />
-    <script type="module" crossorigin src="/assets/index-DuaxTGBL.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-BFGL8iWn.css">
+    <script type="module" crossorigin src="./assets/index-8f-oMECV.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DxP7eI6d.css">
   </head>
   <body>
     <div id="root"></div>
+    <script>console.log("VERIFIED_BUILD_V1.1_PATH_DOWNLOADS");</script>
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(registration => {
-              console.log('SW registered: ', registration);
-            })
-            .catch(registrationError => {
-              console.log('SW registration failed: ', registrationError);
-            });
-        });
-      }
+      // Diagnostic Error Catcher for Mobile Debugging
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        var message = [
+          'Message: ' + msg,
+          'URL: ' + url,
+          'Line: ' + lineNo,
+          'Column: ' + columnNo,
+          'Error object: ' + JSON.stringify(error)
+        ].join('\n');
+        
+        // Show as alert on mobile for visibility
+        if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+          alert("CRITICAL ERROR:\n" + message);
+        }
+        console.error(message);
+        return false;
+      };
+
+      // SELF-DESTRUCT: Forcefully remove existing Service Workers and clear Caches
+      // This fixes the "Zombie Cache" issue where an old index.html is stuck in the WebView.
+      (function() {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(var registration of registrations) {
+              registration.unregister();
+              console.log('ServiceWorker unregistered');
+            }
+          });
+        }
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            for (var name of names) caches.delete(name);
+            console.log('Caches cleared');
+          });
+        }
+      })();
     </script>
   </body>
 </html>

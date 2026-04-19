@@ -1,4 +1,6 @@
 import express from "express";
+import helmet from "helmet";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import { PrismaClient } from "@prisma/client";
 import path from "path";
@@ -8,7 +10,7 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import admin from 'firebase-admin';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
-import firebaseConfig from './firebase-applet-config.json' assert { type: 'json' };
+import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
 import { generateAndSaveAppIcon } from "./scripts/icon-generator.js";
 
 const prisma = new PrismaClient();
@@ -45,13 +47,35 @@ async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000;
 
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "img-src": ["'self'", "data:", "https://*", "blob:"],
+        "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://*"],
+        "connect-src": ["'self'", "https://*", "wss://*"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  }));
+
+  app.use(cors({
+    origin: [
+      "https://localhost", 
+      "http://localhost:5173", 
+      /\.run\.app$/  // Allow all your Google Cloud Run subdomains
+    ],
+    credentials: true
+  }));
+
   app.use(express.json());
   app.use(cookieSession({
-    name: 'session',
-    keys: [process.env.SESSION_SECRET || 'stratos-secret-key'],
+    name: '__Host-session', // Prefixed for extra security
+    keys: [process.env.SESSION_SECRET || 'stratos-production-fallback-key-rotate-me'],
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
     secure: true,
-    sameSite: 'none'
+    httpOnly: true,
+    sameSite: 'lax'
   }));
 
   // OAuth Configuration Helper
@@ -211,7 +235,7 @@ async function startServer() {
   // OAuth Initiation Routes
   app.get("/api/auth/:platform", async (req, res) => {
     const { platform } = req.params;
-    const { clientId: client_id } = req.query; // The client ID from our agency database
+    const { clientId: client_id, mobile } = req.query; // The client ID from our agency database
     
     const config = await getOAuthConfig(platform, req, client_id as string);
     if (!config.clientId) {
@@ -220,7 +244,8 @@ async function startServer() {
 
     const state = JSON.stringify({
       csrf: Math.random().toString(36).substring(7),
-      clientId: client_id
+      clientId: client_id,
+      mobile: mobile === 'true'
     });
     const encodedState = Buffer.from(state).toString('base64');
 
@@ -228,6 +253,7 @@ async function startServer() {
     if (req.session) {
       req.session.pendingClientId = client_id;
       req.session.platform = platform;
+      req.session.isMobile = mobile === 'true';
     }
 
     const params = new URLSearchParams({
@@ -328,20 +354,42 @@ async function startServer() {
         });
       }
       
+      let isMobile = false;
+      if (encodedState) {
+        try {
+          const decodedState = JSON.parse(Buffer.from(String(encodedState), 'base64').toString());
+          isMobile = !!decodedState.mobile;
+        } catch (e) {}
+      }
+
+      if (isMobile) {
+        // Mobile Redirect via Custom URL Scheme
+        const deepLink = `com.stratos.agencyos://oauth-callback?platform=${platform}&status=success&handle=${encodeURIComponent(finalHandle)}&token=${finalAccessToken}`;
+        return res.redirect(deepLink);
+      }
+      
       res.send(`
         <html>
-          <body>
-            <script>
-              window.opener.postMessage({ 
-                type: 'OAUTH_SUCCESS', 
-                platform: '${platform}',
-                token: '${finalAccessToken}',
-                handle: '${finalHandle}',
-                platformAccountId: '${finalPlatformAccountId}'
-              }, '*');
-              window.close();
-            </script>
-            <p>Connection successful! You can close this window.</p>
+          <body style="background: #0f172a; color: white; display: flex; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif;">
+            <div style="text-align: center;">
+              <h1 style="color: #6366f1;">Connection Successful!</h1>
+              <p>Closing the secure window...</p>
+              <script>
+                if (window.opener) {
+                  window.opener.postMessage({ 
+                    type: 'OAUTH_SUCCESS', 
+                    platform: '${platform}',
+                    token: '${finalAccessToken}',
+                    handle: '${finalHandle}',
+                    platformAccountId: '${finalPlatformAccountId}'
+                  }, '*');
+                  setTimeout(() => window.close(), 1000);
+                } else {
+                  // Fallback for missing opener
+                  document.querySelector('p').innerText = "Account connected! You can now return to the app.";
+                }
+              </script>
+            </div>
           </body>
         </html>
       `);
@@ -849,7 +897,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
