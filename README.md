@@ -79,10 +79,10 @@ For each social platform (LinkedIn, Facebook, etc.), you must update the **Autho
 
 **IMPORTANT**: LinkedIn and other providers require `https://`. The application is now configured to force secure redirects.
 
-*   **LinkedIn**: `https://ais-dev-owtofdc55inaxvjck47h35-521851351743.europe-west2.run.app/api/auth/linkedin/callback`
-*   **Facebook/Instagram**: `https://ais-dev-owtofdc55inaxvjck47h35-521851351743.europe-west2.run.app/api/auth/facebook/callback`
-*   **TikTok**: `https://ais-dev-owtofdc55inaxvjck47h35-521851351743.europe-west2.run.app/api/auth/tiktok/callback`
-*   **Twitter**: `https://ais-dev-owtofdc55inaxvjck47h35-521851351743.europe-west2.run.app/api/auth/twitter/callback`
+*   **LinkedIn**: `https://stratos-agency-os-645192182585.us-west1.run.app/api/auth/linkedin/callback`
+*   **Facebook/Instagram**: `https://stratos-agency-os-645192182585.us-west1.run.app/api/auth/facebook/callback`
+*   **TikTok**: `https://stratos-agency-os-645192182585.us-west1.run.app/api/auth/tiktok/callback`
+*   **Twitter**: `https://stratos-agency-os-645192182585.us-west1.run.app/api/auth/twitter/callback`
 
 ### 4. Installation & Database
 1. Install dependencies:

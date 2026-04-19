@@ -237,9 +237,9 @@ export function SocialAccounts() {
           'width=600,height=700'
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Connection error:', error);
-      toast.error('An error occurred while connecting.');
+      toast.error(`Connection error: ${error.message || 'Check server logs'}`);
     }
   };
 
