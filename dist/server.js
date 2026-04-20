@@ -140,8 +140,12 @@ async function startServer() {
     crossOriginEmbedderPolicy: false
   }));
   app.use(cors({
-    origin: "*",
-    // In production, replace with specific origins like http://localhost and your run.app URL
+    origin: [
+      "https://localhost",
+      "http://localhost:5173",
+      /\.run\.app$/
+      // Allow all your Google Cloud Run subdomains
+    ],
     credentials: true
   }));
   app.use(express.json());
@@ -852,7 +856,7 @@ async function startServer() {
       res.sendFile(path2.join(process.cwd(), "dist", "index.html"));
     });
   }
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
