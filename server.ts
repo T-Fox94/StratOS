@@ -263,11 +263,15 @@ async function startServer() {
   });
 
   // OAuth Callback Routes
+  // OAuth Callback Routes
   app.get("/api/auth/:platform/callback", async (req, res) => {
     const { platform } = req.params;
     const { code, state: encodedState } = req.query;
+
+    console.log(`[OAuth] Callback started for ${platform}. Code: ${code ? 'Yes' : 'No'}, State: ${encodedState ? 'Yes' : 'No'}`);
     
     let pendingClientId = req.session?.pendingClientId;
+    if (pendingClientId) console.log(`[OAuth] Found pendingClientId in session: ${pendingClientId}`);
     
     // Fallback: Try to get clientId from state if session is lost
     if (!pendingClientId && encodedState) {
@@ -276,7 +280,7 @@ async function startServer() {
         pendingClientId = decodedState.clientId;
         console.log(`[OAuth] Recovered clientId from state: ${pendingClientId}`);
       } catch (e) {
-        console.error("[OAuth] Failed to decode state:", e);
+        console.error("[OAuth] Failed to decode state:", e.message);
       }
     }
 
@@ -284,6 +288,7 @@ async function startServer() {
 
     try {
       console.log(`[OAuth] Exchanging code for token. Platform: ${platform}, Redirect: ${config.redirectUri}`);
+      
       const response = await axios.post(config.tokenUrl, new URLSearchParams({
         grant_type: 'authorization_code',
         code: String(code),
@@ -294,6 +299,7 @@ async function startServer() {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
       });
 
+      console.log(`[OAuth] Token exchange successful for ${platform}`);
       const { access_token, refresh_token, expires_in, user_id, account_id } = response.data;
       
       let finalAccessToken = access_token;
@@ -372,6 +378,8 @@ async function startServer() {
           isMobile = !!decodedState.mobile;
         } catch (e) {}
       }
+
+      console.log(`[OAuth] Finalizing login. Mobile: ${isMobile}, Platform: ${platform}`);
 
       if (isMobile) {
         // Mobile Redirect via Custom URL Scheme
