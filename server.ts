@@ -338,20 +338,36 @@ async function startServer() {
         }
       }
       
-      // Save to Database using Prisma
+      // Save to Firestore (Permanent Cloud Storage) 
       if (pendingClientId) {
-        await prisma.socialAccount.create({
-          data: {
-            platform,
-            clientId: pendingClientId,
-            accessToken: finalAccessToken,
-            refreshToken: refresh_token || null,
-            platformAccountId: finalPlatformAccountId ? String(finalPlatformAccountId) : null,
-            handle: finalHandle,
-            expiresAt: new Date(Date.now() + (expires_in || 3600) * 1000),
-            status: 'connected'
-          }
-        });
+        const accountData = {
+          platform,
+          clientId: pendingClientId,
+          accessToken: finalAccessToken,
+          refreshToken: refresh_token || null,
+          platformAccountId: finalPlatformAccountId ? String(finalPlatformAccountId) : null,
+          handle: finalHandle,
+          expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + (expires_in || 3600) * 1000)),
+          status: 'connected',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        try {
+          await adminDb.collection('social_accounts').add(accountData);
+          console.log(`[OAuth] Successfully saved ${platform} account to Firestore for client ${pendingClientId}`);
+        } catch (dbError) {
+          console.error(`[OAuth] Critical: Failed to save to Firestore:`, dbError);
+        }
+
+        // Keep Prisma as a secondary local cache if available, but ignore errors
+        try {
+          await prisma.socialAccount.create({ data: {
+            ...accountData,
+            expiresAt: new Date(Date.now() + (expires_in || 3600) * 1000)
+          } as any });
+        } catch (e) {
+          console.warn("[OAuth] Prisma secondary save failed (Normal for Cloud Run):", e.message);
+        }
       }
       
       let isMobile = false;
