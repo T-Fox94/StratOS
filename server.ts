@@ -293,16 +293,36 @@ async function startServer() {
         }
       }
 
-      // Special handling for Facebook to get Page Access Token
+      let finalAccessToken = access_token;
+      let finalPlatformAccountId = null;
+      let finalHandle = platform === 'linkedin' ? 'LinkedIn User' : `Connected ${platform}`;
+
+      // Special handling for Facebook to get Long-Lived and Page Access Tokens
       if (platform === 'facebook') {
         try {
-          const pagesResponse = await axios.get(`https://graph.facebook.com/me/accounts?access_token=${access_token}`);
+          console.log("[OAuth] Exchanging Facebook short-lived token for long-lived token...");
+          const longLivedResponse = await axios.get(`https://graph.facebook.com/v18.0/oauth/access_token`, {
+            params: {
+              grant_type: 'fb_exchange_token',
+              client_id: config.clientId,
+              client_secret: config.clientSecret,
+              fb_exchange_token: access_token
+            }
+          });
+          
+          const longLivedToken = longLivedResponse.data.access_token;
+          finalAccessToken = longLivedToken;
+
+          console.log("[OAuth] Fetching Facebook pages...");
+          const pagesResponse = await axios.get(`https://graph.facebook.com/me/accounts?access_token=${longLivedToken}`);
           const pages = pagesResponse.data.data;
           
-          const targetPage = pages.find((p: any) => p.name.includes('Ngoma Zatu')) || pages[0];
+          // Try to find a primary page or use the first one available
+          const targetPage = pages.find((p: any) => p.name.includes('Ngoma Zatu') || p.tasks?.includes('CREATE_CONTENT')) || pages[0];
           
           if (targetPage) {
-            finalAccessToken = targetPage.access_token;
+            console.log(`[OAuth] Linked to Facebook Page: ${targetPage.name}`);
+            finalAccessToken = targetPage.access_token; // Page tokens from a long-lived user token are permanent!
             finalPlatformAccountId = targetPage.id;
             finalHandle = targetPage.name;
           }
@@ -320,7 +340,7 @@ async function startServer() {
           refreshToken: refresh_token || null,
           platformAccountId: finalPlatformAccountId ? String(finalPlatformAccountId) : null,
           handle: finalHandle,
-          expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + (expires_in || 3600) * 1000)),
+          expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + (expires_in || 5184000) * 1000)), // Default 60 days for long-lived
           status: 'connected',
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         };
@@ -388,16 +408,16 @@ async function startServer() {
           <p>The ${platform} server rejected the request. This usually happens due to a credential or redirect mismatch.</p>
           
           <div style="margin-top: 20px;">
-            <strong>LinkedIn Response Details:</strong>
+            <strong>${platform.toUpperCase()} Response Details:</strong>
             <pre style="background: #1e293b; color: #38bdf8; padding: 15px; border-radius: 8px; margin-top: 10px; overflow-x: auto;">${detailedMessage}</pre>
           </div>
           
           <div style="margin-top: 20px; font-size: 14px; color: #64748b;">
             <strong>Troubleshooting:</strong>
             <ul style="margin-top: 5px;">
-              <li>Check if "Marketing Developer Platform" is added to your LinkedIn app.</li>
-              <li>Ensure your Redirect URIs match exactly.</li>
-              <li>Verify your Client Secret hasn't expired.</li>
+              <li>Ensure your Redirect URIs match correctly in the ${platform} dashboard.</li>
+              <li>Verify your Client ID and Secret are correct.</li>
+              <li>Check if your ${platform} app has the necessary permissions (scopes).</li>
             </ul>
           </div>
         </div>
