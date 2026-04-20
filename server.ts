@@ -44,6 +44,9 @@ const adminDb = firebaseConfig.firestoreDatabaseId
 console.log(`[FirebaseAdmin] Firestore initialized with Database ID: ${firebaseConfig.firestoreDatabaseId || '(default)'}`);
 
 async function startServer() {
+  console.log("-----------------------------------------");
+  console.log("[SERVER] Version 1.0.5 - Zero Prisma Active");
+  console.log("-----------------------------------------");
   const app = express();
   const PORT = process.env.PORT || 3000;
 
