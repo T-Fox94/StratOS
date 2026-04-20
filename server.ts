@@ -104,7 +104,7 @@ async function startServer() {
 
     // 1. Check for client-specific credentials in Prisma first if clientId is provided
     if (clientIdParam) {
-      console.log(`[OAuth] Attempting to fetch client-specific credentials for: ${clientIdParam} from Prisma`);
+      console.log(`[OAuth] Attempting to fetch client-specific credentials for: ${clientIdParam}`);
       try {
         const clientConfig = await prisma.clientSocialConfig.findUnique({
           where: { clientId: clientIdParam }
@@ -115,26 +115,21 @@ async function startServer() {
           if (platform === 'facebook' && clientConfig.facebookAppId && clientConfig.facebookAppSecret) {
             clientId = clientConfig.facebookAppId;
             clientSecret = clientConfig.facebookAppSecret;
-            console.log(`[OAuth] Using client-specific Facebook credentials from Prisma`);
           } else if (platform === 'instagram' && clientConfig.instagramAppId && clientConfig.instagramAppSecret) {
             clientId = clientConfig.instagramAppId;
             clientSecret = clientConfig.instagramAppSecret;
           } else if (platform === 'linkedin' && clientConfig.linkedinClientId && clientConfig.linkedinClientSecret) {
             clientId = clientConfig.linkedinClientId;
             clientSecret = clientConfig.linkedinClientSecret;
-            console.log(`[OAuth] Using client-specific LinkedIn credentials from Prisma`);
           } else if (platform === 'tiktok' && clientConfig.tiktokKey && clientConfig.tiktokSecret) {
             clientId = clientConfig.tiktokKey;
             clientSecret = clientConfig.tiktokSecret;
-            console.log(`[OAuth] Using client-specific TikTok credentials from Prisma`);
           } else if (platform === 'twitter' && clientConfig.twitterClientId && clientConfig.twitterClientSecret) {
             clientId = clientConfig.twitterClientId;
             clientSecret = clientConfig.twitterClientSecret;
-            console.log(`[OAuth] Using client-specific Twitter credentials from Prisma`);
           }
         } else {
-          console.log(`[OAuth] No client-specific config found for ${clientIdParam} in Prisma, checking Firestore fallback...`);
-          // 2. Fallback to Firestore for client-specific credentials (might fail with PERMISSION_DENIED)
+          // 2. Fallback to Firestore for client-specific credentials
           try {
             const clientConfigDoc = await adminDb.collection('client_social_configs').doc(clientIdParam).get();
             if (clientConfigDoc.exists) {
@@ -159,11 +154,11 @@ async function startServer() {
               }
             }
           } catch (fsError) {
-            console.warn("[OAuth] Firestore fallback failed (likely PERMISSION_DENIED):", fsError);
+            console.warn("[OAuth] Firestore fallback failed:", fsError.message);
           }
         }
       } catch (e) {
-        console.error("[OAuth] Error fetching client-specific credentials from Prisma:", e);
+        console.warn(`[OAuth] Prisma lookup failed for ${clientIdParam}:`, e.message);
       }
     }
 
