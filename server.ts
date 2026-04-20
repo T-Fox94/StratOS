@@ -102,92 +102,61 @@ async function startServer() {
 
     console.log(`[OAuth] Initial credentials for ${platform}:`, { hasClientId: !!clientId, hasClientSecret: !!clientSecret });
 
-    // 1. Check for client-specific credentials in Prisma first if clientId is provided
+    // 1. Check for client-specific credentials in Firestore first (Persistence for Cloud Run)
     if (clientIdParam) {
-      console.log(`[OAuth] Attempting to fetch client-specific credentials for: ${clientIdParam}`);
+      console.log(`[OAuth] Fetching client config for: ${clientIdParam} from Firestore`);
       try {
-        const clientConfig = await prisma.clientSocialConfig.findUnique({
-          where: { clientId: clientIdParam }
-        });
-        
-        if (clientConfig) {
-          console.log(`[OAuth] Found client-specific config for ${clientIdParam} in Prisma`);
-          if (platform === 'facebook' && clientConfig.facebookAppId && clientConfig.facebookAppSecret) {
-            clientId = clientConfig.facebookAppId;
-            clientSecret = clientConfig.facebookAppSecret;
-          } else if (platform === 'instagram' && clientConfig.instagramAppId && clientConfig.instagramAppSecret) {
-            clientId = clientConfig.instagramAppId;
-            clientSecret = clientConfig.instagramAppSecret;
-          } else if (platform === 'linkedin' && clientConfig.linkedinClientId && clientConfig.linkedinClientSecret) {
-            clientId = clientConfig.linkedinClientId;
-            clientSecret = clientConfig.linkedinClientSecret;
-          } else if (platform === 'tiktok' && clientConfig.tiktokKey && clientConfig.tiktokSecret) {
-            clientId = clientConfig.tiktokKey;
-            clientSecret = clientConfig.tiktokSecret;
-          } else if (platform === 'twitter' && clientConfig.twitterClientId && clientConfig.twitterClientSecret) {
-            clientId = clientConfig.twitterClientId;
-            clientSecret = clientConfig.twitterClientSecret;
-          }
-        } else {
-          // 2. Fallback to Firestore for client-specific credentials
-          try {
-            const clientConfigDoc = await adminDb.collection('client_social_configs').doc(clientIdParam).get();
-            if (clientConfigDoc.exists) {
-              const data = clientConfigDoc.data();
-              if (data) {
-                if (platform === 'facebook' && data.facebookAppId && data.facebookAppSecret) {
-                  clientId = data.facebookAppId;
-                  clientSecret = data.facebookAppSecret;
-                } else if (platform === 'instagram' && data.instagramAppId && data.instagramAppSecret) {
-                  clientId = data.instagramAppId;
-                  clientSecret = data.instagramAppSecret;
-                } else if (platform === 'linkedin' && data.linkedinClientId && data.linkedinClientSecret) {
-                  clientId = data.linkedinClientId;
-                  clientSecret = data.linkedinClientSecret;
-                } else if (platform === 'tiktok' && data.tiktokKey && data.tiktokSecret) {
-                  clientId = data.tiktokKey;
-                  clientSecret = data.tiktokSecret;
-                } else if (platform === 'twitter' && data.twitterClientId && data.twitterClientSecret) {
-                  clientId = data.twitterClientId;
-                  clientSecret = data.twitterClientSecret;
-                }
-              }
+        const clientConfigDoc = await adminDb.collection('client_social_configs').doc(clientIdParam).get();
+        if (clientConfigDoc.exists) {
+          const data = clientConfigDoc.data();
+          if (data) {
+            console.log(`[OAuth] Using client-specific Firestore credentials for ${clientIdParam}`);
+            if (platform === 'facebook' && data.facebookAppId && data.facebookAppSecret) {
+              clientId = data.facebookAppId;
+              clientSecret = data.facebookAppSecret;
+            } else if (platform === 'instagram' && data.instagramAppId && data.instagramAppSecret) {
+              clientId = data.instagramAppId;
+              clientSecret = data.instagramAppSecret;
+            } else if (platform === 'linkedin' && data.linkedinClientId && data.linkedinClientSecret) {
+              clientId = data.linkedinClientId;
+              clientSecret = data.linkedinClientSecret;
+            } else if (platform === 'tiktok' && data.tiktokKey && data.tiktokSecret) {
+              clientId = data.tiktokKey;
+              clientSecret = data.tiktokSecret;
+            } else if (platform === 'twitter' && data.twitterClientId && data.twitterClientSecret) {
+              clientId = data.twitterClientId;
+              clientSecret = data.twitterClientSecret;
             }
-          } catch (fsError) {
-            console.warn("[OAuth] Firestore fallback failed:", fsError.message);
           }
         }
-      } catch (e) {
-        console.warn(`[OAuth] Prisma lookup failed for ${clientIdParam}:`, e.message);
+      } catch (fsError) {
+        console.warn("[OAuth] Firestore client config lookup failed:", fsError.message);
       }
     }
 
-    // 3. Fallback to global settings if not found or no clientIdParam
+    // 3. Fallback to Firestore global settings if still missing
     if (!clientId || !clientSecret) {
-      console.log(`[OAuth] Checking global settings in Prisma for ${platform}`);
+      console.log(`[OAuth] Checking global config in Firestore for ${platform}`);
       try {
-        const globalSettings = await prisma.globalSettings.findUnique({
-          where: { id: 'oauth_credentials' }
-        });
-        
-        if (globalSettings) {
-          const data = JSON.parse(globalSettings.data);
+        const globalSettingsDoc = await adminDb.collection('global_settings').doc('oauth_credentials').get();
+        if (globalSettingsDoc.exists) {
+          const data = globalSettingsDoc.data();
           if (data && data[platform]) {
             clientId = clientId || data[platform].clientId;
             clientSecret = clientSecret || data[platform].clientSecret;
-            console.log(`[OAuth] Using global Prisma credentials for ${platform}`);
+            console.log(`[OAuth] Using global Firestore credentials for ${platform}`);
           }
-        } 
-        
-        // Final fallback: explicitly check process.env one last time if still missing
-        if (!clientId || !clientSecret) {
-          console.log(`[OAuth] Checking process.env final fallback for ${platform}`);
-          clientId = clientId || process.env[`${platform.toUpperCase()}_CLIENT_ID`];
-          clientSecret = clientSecret || process.env[`${platform.toUpperCase()}_CLIENT_SECRET`];
         }
-      } catch (e) {
-        console.error("[OAuth] Error fetching global credentials from Prisma:", e);
+      } catch (fsError) {
+        console.warn("[OAuth] Firestore global settings lookup failed:", fsError.message);
       }
+    }
+
+    // 4. Final fallback: Use environment variables
+    if (!clientId || !clientSecret) {
+      console.log(`[OAuth] Using Environment Variable fallback for ${platform}`);
+      clientId = clientId || process.env[`${platform.toUpperCase()}_CLIENT_ID`];
+      clientSecret = clientSecret || process.env[`${platform.toUpperCase()}_CLIENT_SECRET`];
     }
     
     console.log(`[OAuth] Final evaluation for ${platform}:`, { 
@@ -357,17 +326,7 @@ async function startServer() {
           await adminDb.collection('social_accounts').add(accountData);
           console.log(`[OAuth] Successfully saved ${platform} account to Firestore for client ${pendingClientId}`);
         } catch (dbError) {
-          console.error(`[OAuth] Critical: Failed to save to Firestore:`, dbError);
-        }
-
-        // Keep Prisma as a secondary local cache if available, but ignore errors
-        try {
-          await prisma.socialAccount.create({ data: {
-            ...accountData,
-            expiresAt: new Date(Date.now() + (expires_in || 3600) * 1000)
-          } as any });
-        } catch (e) {
-          console.warn("[OAuth] Prisma secondary save failed (Normal for Cloud Run):", e.message);
+          console.error(`[OAuth] Critical: Failed to save to Firestore:`, dbError.message);
         }
       }
       
