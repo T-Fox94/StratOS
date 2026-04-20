@@ -561,25 +561,15 @@ async function startServer() {
     const clientId = req.query.clientId as string;
     if (clientId) {
       try {
-        // Try Prisma first
-        const clientConfig = await prisma.clientSocialConfig.findUnique({
-          where: { clientId }
-        });
-        
-        if (clientConfig && clientConfig.fbVerifyToken && (platform === 'facebook' || platform === 'instagram')) {
-          verifyToken = clientConfig.fbVerifyToken;
-        } else {
-          // Fallback to Firestore
-          const clientConfigDoc = await adminDb.collection('client_social_configs').doc(clientId).get();
-          if (clientConfigDoc.exists) {
-            const data = clientConfigDoc.data();
-            if (data && data.fbVerifyToken && (platform === 'facebook' || platform === 'instagram')) {
-              verifyToken = data.fbVerifyToken;
-            }
+        const clientConfigDoc = await adminDb.collection('client_social_configs').doc(clientId).get();
+        if (clientConfigDoc.exists) {
+          const data = clientConfigDoc.data();
+          if (data && data.fbVerifyToken && (platform === 'facebook' || platform === 'instagram')) {
+            verifyToken = data.fbVerifyToken;
           }
         }
       } catch (e) {
-        console.warn("Error fetching client-specific verify token (likely PERMISSION_DENIED):", e);
+        console.warn("[Webhooks] Firestore verify token lookup failed:", e.message);
       }
     }
 
