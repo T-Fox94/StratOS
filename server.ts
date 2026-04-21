@@ -442,6 +442,7 @@ async function startServer() {
         database: {
           exists: globalDoc.exists,
           projectId: admin.app().options.projectId || "application-default",
+          databaseId: (adminDb as any)._databaseId?.database || "(default)",
           facebookConfigFound: !!fbConfig,
           facebookKeys: fbConfig ? {
             hasClientId: !!fbConfig.clientId,
