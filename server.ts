@@ -12,71 +12,44 @@ import admin from 'firebase-admin';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
 
-let firebaseConfig: any = {};
-try {
-  const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
-  if (fs.existsSync(configPath)) {
-    firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  }
-} catch (e) {
-  console.warn("[SERVER] Could not load firebase-applet-config.json from disk, using empty defaults.");
-}
-
 const prisma = new PrismaClient();
-let firebaseApp: any = null;
-let db: any = null;
-
-try {
-  if (firebaseConfig.projectId) {
-    firebaseApp = initializeApp(firebaseConfig);
-    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
-    console.log("[Firebase] Frontend Client SDK Initialized");
-  }
-} catch (e: any) {
-  console.warn("[Firebase] Frontend Client SDK init failed:", e.message);
-}
-
-// Initialize Firebase Admin for server-side operations that bypass rules
-if (admin.apps.length === 0) {
-  try {
-    admin.initializeApp({
-      credential: admin.credential.applicationDefault(),
-      projectId: firebaseConfig.projectId,
-    });
-    console.log("[FirebaseAdmin] Initialized with applicationDefault credentials");
-  } catch (e: any) {
-    console.warn("[FirebaseAdmin] ADC failed, falling back to basic config:", e.message);
-    try {
-      admin.initializeApp({
-        projectId: firebaseConfig.projectId,
-      });
-    } catch (e2: any) {
-      console.warn("[FirebaseAdmin] Critical init failure:", e2.message);
-    }
-  }
-}
-
-const adminApp = admin.app();
-// Safely check options
-if (adminApp.options) {
-  console.log(`[FirebaseAdmin] App Name: ${adminApp.name}, Project ID: ${adminApp.options.projectId}`);
-}
-
-// Ensure we use the correct database ID for the Admin SDK
-const adminDb = (firebaseConfig.firestoreDatabaseId && adminApp)
-  ? getAdminFirestore(adminApp, firebaseConfig.firestoreDatabaseId)
-  : (adminApp ? getAdminFirestore(adminApp) : null);
-
-if (adminDb) {
-  console.log(`[FirebaseAdmin] Firestore initialized with Database ID: ${firebaseConfig.firestoreDatabaseId || '(default)'}`);
-}
 
 async function startServer() {
   console.log("-----------------------------------------");
-  console.log("[SERVER] Version 1.0.5 - Zero Prisma Active");
+  console.log("[SERVER] Version 1.1.3 - Bulletproof Boot");
   console.log("-----------------------------------------");
+
+  let firebaseConfig: any = {};
+  try {
+    const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+    if (fs.existsSync(configPath)) {
+      firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+  } catch (e) {
+    console.warn("[SERVER] Could not load firebase-applet-config.json");
+  }
+
+  // Initialize Firebase Admin for server-side operations
+  let adminDb: any = null;
+  try {
+    if (admin.apps.length === 0) {
+      admin.initializeApp({
+        credential: admin.credential.applicationDefault(),
+        projectId: firebaseConfig.projectId,
+      });
+      console.log("[FirebaseAdmin] Initialized");
+    }
+    
+    const adminApp = admin.app();
+    adminDb = firebaseConfig.firestoreDatabaseId 
+      ? getAdminFirestore(adminApp, firebaseConfig.firestoreDatabaseId)
+      : getAdminFirestore(adminApp);
+  } catch (e: any) {
+    console.warn("[FirebaseAdmin] Startup check (ADC):", e.message);
+  }
+
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT || 8080;
 
   app.use(helmet({
     contentSecurityPolicy: {
