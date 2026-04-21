@@ -429,6 +429,37 @@ async function startServer() {
   });
 
   // API Routes
+  app.get("/api/auth/debug", async (req, res) => {
+    try {
+      console.log("[Debug] Starting Firestore auth check...");
+      const globalDoc = await adminDb.collection('global_settings').doc('oauth_credentials').get();
+      const fbConfig = globalDoc.exists ? globalDoc.data()?.facebook : null;
+      
+      const response = {
+        status: "Diagnostic Active",
+        timestamp: new Date().toISOString(),
+        database: {
+          exists: globalDoc.exists,
+          projectId: admin.app().options.projectId || "application-default",
+          facebookConfigFound: !!fbConfig,
+          facebookKeys: fbConfig ? {
+            hasClientId: !!fbConfig.clientId,
+            hasClientSecret: !!fbConfig.clientSecret,
+            clientIdPrefix: fbConfig.clientId ? fbConfig.clientId.substring(0, 4) + "****" : "none"
+          } : "not_found"
+        },
+        environment: {
+          hasFbClientId: !!process.env.FACEBOOK_CLIENT_ID,
+          hasFbAppId: !!process.env.FACEBOOK_APP_ID
+        }
+      };
+      
+      res.json(response);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message, stack: e.stack });
+    }
+  });
+
   app.post("/api/settings/:id", async (req, res) => {
     const { id } = req.params;
     try {
