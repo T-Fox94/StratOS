@@ -13,10 +13,11 @@ import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
 
 const prisma = new PrismaClient();
+let adminDb: any = null; // Declare at top level so OAuth functions can see it
 
 async function startServer() {
   console.log("-----------------------------------------");
-  console.log("[SERVER] Version 1.1.3 - Bulletproof Boot");
+  console.log("[SERVER] Version 1.1.4 - Scope Corrected");
   console.log("-----------------------------------------");
 
   let firebaseConfig: any = {};
@@ -30,7 +31,6 @@ async function startServer() {
   }
 
   // Initialize Firebase Admin for server-side operations
-  let adminDb: any = null;
   try {
     if (admin.apps.length === 0) {
       admin.initializeApp({
