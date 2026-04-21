@@ -92,18 +92,32 @@ async function startServer() {
     const isShared = host.includes('ais-pre');
     const baseUrl = isShared ? SHARED_URL : APP_URL;
     
-    // DIAGNOSTIC LOG: Print visible environment keys for debugging
-    const visibleKeys = Object.keys(process.env).filter(k => k.includes(platform.toUpperCase()));
-    console.log(`[OAuth] Visible Environment Keys for ${platform}:`, visibleKeys);
-    console.log(`[OAuth] Raw platform string: "${platform}" (length: ${platform.length})`);
+    const envKeys = Object.keys(process.env);
+    console.log(`[OAuth] Diagnostic: Checking environment for "${platform}"...`);
     
-    const redirectUri = `${baseUrl}/api/auth/${platform}/callback`;
-    console.log(`[OAuth] Using redirect_uri: ${redirectUri}`);
+    // Fuzzy lookup: Check for both PLATFORM_CLIENT_ID and PLATFORM_APP_ID
+    const possibleClientIdKeys = [`${platform.toUpperCase()}_CLIENT_ID`, `${platform.toUpperCase()}_APP_ID` ];
+    const possibleClientSecretKeys = [`${platform.toUpperCase()}_CLIENT_SECRET`, `${platform.toUpperCase()}_APP_SECRET` ];
     
-    let clientId = process.env[`${platform.toUpperCase()}_CLIENT_ID`];
-    let clientSecret = process.env[`${platform.toUpperCase()}_CLIENT_SECRET`];
+    let clientId = null;
+    let clientSecret = null;
 
-    console.log(`[OAuth] Initial credentials for ${platform}:`, { hasClientId: !!clientId, hasClientSecret: !!clientSecret });
+    // Direct check first
+    for (const key of possibleClientIdKeys) {
+      if (process.env[key]) {
+        clientId = process.env[key];
+        console.log(`[OAuth] Found Client ID in Env using key: ${key}`);
+        break;
+      }
+    }
+    
+    for (const key of possibleClientSecretKeys) {
+      if (process.env[key]) {
+        clientSecret = process.env[key];
+        console.log(`[OAuth] Found Client Secret in Env using key: ${key}`);
+        break;
+      }
+    }
 
     // 1. Check for client-specific credentials in Firestore first (Persistence for Cloud Run)
     if (clientIdParam) {
@@ -113,10 +127,11 @@ async function startServer() {
         if (clientConfigDoc.exists) {
           const data = clientConfigDoc.data();
           if (data) {
-            console.log(`[OAuth] Using client-specific Firestore credentials for ${clientIdParam}`);
+            console.log(`[OAuth] Found Firestore settings for ${clientIdParam}. Checking for ${platform} keys...`);
             if (platform === 'facebook' && data.facebookAppId && data.facebookAppSecret) {
               clientId = data.facebookAppId;
               clientSecret = data.facebookAppSecret;
+              console.log(`[OAuth] Overriding with client-specific Facebook keys from Firestore`);
             } else if (platform === 'instagram' && data.instagramAppId && data.instagramAppSecret) {
               clientId = data.instagramAppId;
               clientSecret = data.instagramAppSecret;
@@ -132,14 +147,13 @@ async function startServer() {
             }
           }
         }
-      } catch (fsError) {
+      } catch (fsError: any) {
         console.warn("[OAuth] Firestore client config lookup failed:", fsError.message);
       }
     }
 
     // 3. Fallback to Firestore global settings if still missing
     if (!clientId || !clientSecret) {
-      console.log(`[OAuth] Checking global config in Firestore for ${platform}`);
       try {
         const globalSettingsDoc = await adminDb.collection('global_settings').doc('oauth_credentials').get();
         if (globalSettingsDoc.exists) {
@@ -147,25 +161,18 @@ async function startServer() {
           if (data && data[platform]) {
             clientId = clientId || data[platform].clientId;
             clientSecret = clientSecret || data[platform].clientSecret;
-            console.log(`[OAuth] Using global Firestore credentials for ${platform}`);
+            if (data[platform].clientId) console.log(`[OAuth] Using global Firestore credentials for ${platform}`);
           }
         }
-      } catch (fsError) {
+      } catch (fsError: any) {
         console.warn("[OAuth] Firestore global settings lookup failed:", fsError.message);
       }
     }
-
-    // 4. Final fallback: Use environment variables
-    if (!clientId || !clientSecret) {
-      console.log(`[OAuth] Using Environment Variable fallback for ${platform}`);
-      clientId = clientId || process.env[`${platform.toUpperCase()}_CLIENT_ID`];
-      clientSecret = clientSecret || process.env[`${platform.toUpperCase()}_CLIENT_SECRET`];
-    }
     
-    console.log(`[OAuth] Final evaluation for ${platform}:`, { 
+    console.log(`[OAuth] Final evaluation for "${platform}":`, { 
       hasClientId: !!clientId, 
       hasClientSecret: !!clientSecret,
-      envUsed: !clientId && !!process.env[`${platform.toUpperCase()}_CLIENT_ID`]
+      clientIdPrefix: clientId ? clientId.substring(0, 4) + "****" : "none"
     });
     
     const configs: Record<string, any> = {
