@@ -10,12 +10,31 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import admin from 'firebase-admin';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
-import firebaseConfig from './firebase-applet-config.json' with { type: 'json' };
-import { generateAndSaveAppIcon } from "./scripts/icon-generator.js";
+import fs from 'fs';
+
+let firebaseConfig: any = {};
+try {
+  const configPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+  if (fs.existsSync(configPath)) {
+    firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  }
+} catch (e) {
+  console.warn("[SERVER] Could not load firebase-applet-config.json from disk, using empty defaults.");
+}
 
 const prisma = new PrismaClient();
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+let firebaseApp: any = null;
+let db: any = null;
+
+try {
+  if (firebaseConfig.projectId) {
+    firebaseApp = initializeApp(firebaseConfig);
+    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+    console.log("[Firebase] Frontend Client SDK Initialized");
+  }
+} catch (e: any) {
+  console.warn("[Firebase] Frontend Client SDK init failed:", e.message);
+}
 
 // Initialize Firebase Admin for server-side operations that bypass rules
 if (admin.apps.length === 0) {
@@ -25,23 +44,32 @@ if (admin.apps.length === 0) {
       projectId: firebaseConfig.projectId,
     });
     console.log("[FirebaseAdmin] Initialized with applicationDefault credentials");
-  } catch (e) {
-    console.error("[FirebaseAdmin] Initialization error, falling back to basic init:", e);
-    admin.initializeApp({
-      projectId: firebaseConfig.projectId,
-    });
+  } catch (e: any) {
+    console.warn("[FirebaseAdmin] ADC failed, falling back to basic config:", e.message);
+    try {
+      admin.initializeApp({
+        projectId: firebaseConfig.projectId,
+      });
+    } catch (e2: any) {
+      console.warn("[FirebaseAdmin] Critical init failure:", e2.message);
+    }
   }
 }
 
 const adminApp = admin.app();
-console.log(`[FirebaseAdmin] App Name: ${adminApp.name}, Project ID: ${adminApp.options.projectId}`);
+// Safely check options
+if (adminApp.options) {
+  console.log(`[FirebaseAdmin] App Name: ${adminApp.name}, Project ID: ${adminApp.options.projectId}`);
+}
 
 // Ensure we use the correct database ID for the Admin SDK
-const adminDb = firebaseConfig.firestoreDatabaseId 
+const adminDb = (firebaseConfig.firestoreDatabaseId && adminApp)
   ? getAdminFirestore(adminApp, firebaseConfig.firestoreDatabaseId)
-  : getAdminFirestore(adminApp);
+  : (adminApp ? getAdminFirestore(adminApp) : null);
 
-console.log(`[FirebaseAdmin] Firestore initialized with Database ID: ${firebaseConfig.firestoreDatabaseId || '(default)'}`);
+if (adminDb) {
+  console.log(`[FirebaseAdmin] Firestore initialized with Database ID: ${firebaseConfig.firestoreDatabaseId || '(default)'}`);
+}
 
 async function startServer() {
   console.log("-----------------------------------------");
