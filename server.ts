@@ -936,14 +936,21 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  // Root redirect/status
+  app.get("/health", (req, res) => res.json({ status: "ok", version: "1.1.2" }));
+
+  // Vite middleware for development - only in explicit local dev
+  const isProd = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
+  
+  if (!isProd) {
+    console.log("[SERVER] Starting in DEVELOPMENT mode (Vite)");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
+    console.log("[SERVER] Starting in PRODUCTION mode (Static)");
     app.use(express.static(path.join(process.cwd(), "dist")));
     app.get("*", (req, res) => {
       res.sendFile(path.join(process.cwd(), "dist", "index.html"));
