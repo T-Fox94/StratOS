@@ -947,9 +947,38 @@ async function startServer() {
     });
   }
 
-  app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  const startListener = (port: number) => {
+    return new Promise((resolve, reject) => {
+      const server = app.listen(port, "0.0.0.0", () => {
+        console.log(`[SERVER] Success! Listening on PORT: ${port}`);
+        resolve(server);
+      }).on('error', (err: any) => {
+        if (err.code === 'EADDRINUSE') {
+          console.warn(`[SERVER] PORT ${port} is occupied, trying next...`);
+          resolve(null);
+        } else {
+          reject(err);
+        }
+      });
+    });
+  };
+
+  // Auto-negotiate port (Try 8080 then 3000)
+  const portsToTry = [Number(PORT), 3000, 8000, 8081];
+  let success = false;
+  
+  for (const port of portsToTry) {
+    if (success) break;
+    const result = await startListener(port);
+    if (result) {
+      success = true;
+    }
+  }
+
+  if (!success) {
+    console.error("[SERVER] FATAL: Could not bind to any port!");
+    process.exit(1);
+  }
 }
 
 startServer();
