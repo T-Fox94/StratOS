@@ -293,10 +293,6 @@ async function startServer() {
         }
       }
 
-      let finalAccessToken = access_token;
-      let finalPlatformAccountId = null;
-      let finalHandle = platform === 'linkedin' ? 'LinkedIn User' : `Connected ${platform}`;
-
       // Special handling for Facebook to get Long-Lived and Page Access Tokens
       if (platform === 'facebook') {
         try {
