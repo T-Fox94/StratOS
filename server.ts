@@ -17,7 +17,7 @@ let adminDb: any = null; // Declare at top level so OAuth functions can see it
 
 async function startServer() {
   console.log("-----------------------------------------");
-  console.log("[SERVER] Version 1.1.4 - Scope Corrected");
+  console.log("[SERVER] Version 1.1.7 - Ironclad Recovery");
   console.log("-----------------------------------------");
 
   let firebaseConfig: any = {};
@@ -37,7 +37,7 @@ async function startServer() {
         credential: admin.credential.applicationDefault(),
         projectId: firebaseConfig.projectId,
       });
-      console.log("[FirebaseAdmin] Initialized");
+      console.log("[FirebaseAdmin] Handshake Success");
     }
     
     const adminApp = admin.app();
@@ -156,24 +156,33 @@ async function startServer() {
     // 3. Fallback to Firestore global settings if still missing
     if (!clientId || !clientSecret) {
       try {
-        const globalSettingsDoc = await adminDb.collection('global_settings').doc('oauth_credentials').get();
-        if (globalSettingsDoc.exists) {
-          const data = globalSettingsDoc.data();
-          if (data && data[platform]) {
-            clientId = clientId || data[platform].clientId;
-            clientSecret = clientSecret || data[platform].clientSecret;
-            if (data[platform].clientId) console.log(`[OAuth] Using global Firestore credentials for ${platform}`);
+        if (adminDb) {
+          const globalSettingsDoc = await adminDb.collection('global_settings').doc('oauth_credentials').get();
+          if (globalSettingsDoc.exists) {
+            const data = globalSettingsDoc.data();
+            if (data && data[platform]) {
+              clientId = clientId || data[platform].clientId;
+              clientSecret = clientSecret || data[platform].clientSecret;
+              if (data[platform].clientId) console.log(`[OAuth] Using global Firestore credentials for ${platform}`);
+            }
           }
         }
       } catch (fsError: any) {
         console.warn("[OAuth] Firestore global settings lookup failed:", fsError.message);
       }
     }
+
+    // 4. HARDCODED EMERGENCY FALLBACK (Facebook Only)
+    // This guarantees connectivity even if all other sources fail.
+    if (platform === 'facebook' && (!clientId || !clientSecret)) {
+      clientId = '1621305335865053';
+      clientSecret = '4e450f5b4fd53d0853a1e4342d943f58';
+      console.log(`[OAuth] Applying Hardcoded EMERGENCY FALLBACK for Facebook`);
+    }
     
-    console.log(`[OAuth] Final evaluation for "${platform}":`, { 
+    console.log(`[OAuth] Final evaluation for ${platform}:`, { 
       hasClientId: !!clientId, 
-      hasClientSecret: !!clientSecret,
-      clientIdPrefix: clientId ? clientId.substring(0, 4) + "****" : "none"
+      hasClientSecret: !!clientSecret
     });
     
     const configs: Record<string, any> = {
@@ -432,25 +441,32 @@ async function startServer() {
   // API Routes
   app.get("/api/auth/debug", async (req, res) => {
     try {
-      console.log("[Debug] Starting Firestore auth check...");
-      const globalDoc = await adminDb.collection('global_settings').doc('oauth_credentials').get();
-      const fbConfig = globalDoc.exists ? globalDoc.data()?.facebook : null;
+      console.log("[Debug] Starting Ironclad Firestore check...");
+      let fbConfig = null;
+      let dbReady = false;
+
+      if (adminDb) {
+        const globalDoc = await adminDb.collection('global_settings').doc('oauth_credentials').get();
+        fbConfig = globalDoc.exists ? globalDoc.data()?.facebook : null;
+        dbReady = true;
+      }
       
       const response = {
-        status: "Diagnostic Active",
+        status: "Diagnostic Mode 1.1.7",
         timestamp: new Date().toISOString(),
         database: {
-          exists: globalDoc.exists,
-          projectId: admin.app().options.projectId || "application-default",
-          databaseId: (adminDb as any)._databaseId?.database || "(default)",
+          isInitialized: !!adminDb,
+          isReady: dbReady,
+          projectId: admin.apps.length > 0 ? admin.app().options.projectId : "not_initialized",
+          databaseId: adminDb ? (adminDb as any)._databaseId?.database : "none",
           facebookConfigFound: !!fbConfig,
           facebookKeys: fbConfig ? {
             hasClientId: !!fbConfig.clientId,
-            hasClientSecret: !!fbConfig.clientSecret,
-            clientIdPrefix: fbConfig.clientId ? fbConfig.clientId.substring(0, 4) + "****" : "none"
+            hasClientSecret: !!fbConfig.clientSecret
           } : "not_found"
         },
         environment: {
+          port: process.env.PORT || "default",
           hasFbClientId: !!process.env.FACEBOOK_CLIENT_ID,
           hasFbAppId: !!process.env.FACEBOOK_APP_ID
         }
