@@ -58,12 +58,13 @@ async function startServer() {
 
   const app = express();
   
-  // PRIORITY ROUTES (Registered before any middleware)
-  app.get("/health", (req, res) => res.status(200).send("OK - Baseline Healthy"));
+  // 1. Health Check
+  app.get("/health", (req, res) => res.status(200).send("OK - Healthy"));
   
+  // 2. Diagnostic Debug Route (v1.8.0)
   app.get("/api/auth/debug", async (req, res) => {
     try {
-      console.log("[Debug] Running Diagnostic Ping...");
+      console.log("[Debug] Running Handshake Diagnostic...");
       let fbConfig = null;
       let dbReady = false;
 
@@ -74,22 +75,15 @@ async function startServer() {
       }
       
       res.json({
-        status: "Diagnostic 1.6.0",
-        database: {
-          isInitialized: !!adminDb,
-          isReady: dbReady,
-          facebookConfigFound: !!fbConfig
+        status: "Diagnostic 1.8.0",
+        database: { isInitialized: !!adminDb, isReady: dbReady },
+        env: {
+          hasFbId: !!(process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID),
+          hasFbSecret: !!(process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET)
         },
-        system: {
-          uptime: process.uptime(),
-          nodeVersion: process.version,
-          env: {
-            hasFbId: !!(process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID),
-            hasFbSecret: !!(process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET)
-          },
-          handshake: {
-            facebookSecretFound: !!(fbConfig?.clientSecret || fbConfig?.facebookAppSecret || '4e450f5b4fd53d0853a1e4342d943f58')
-          }
+        lookup: {
+          facebookResult: fbConfig ? "Found in Firestore" : "Not in Firestore",
+          hardcodedFallbackActive: true
         }
       });
     } catch (e: any) {
@@ -97,80 +91,82 @@ async function startServer() {
     }
   });
 
-  const PORT = process.env.PORT || 8080;
+  // 3. Middlewares
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "img-src": ["'self'", "data:", "https://*", "blob:"],
+        "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://*"],
+        "connect-src": ["'self'", "https://*", "wss://*"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  }));
 
-  // ... (helmet, cors, express.json middlewares omitted for brevity in diff)
+  app.use(cors({
+    origin: ["https://localhost", "http://localhost:5173", /\.run\.app$/],
+    credentials: true
+  }));
 
-  // OAuth Configuration Helper (Refactored v1.6.0 - Full Handshake)
+  app.use(express.json());
+  app.use(cookieSession({
+    name: '__Host-session',
+    keys: [process.env.SESSION_SECRET || 'stratos-production-fallback-key-rotate-me'],
+    maxAge: 24 * 60 * 60 * 1000,
+    secure: true,
+    httpOnly: true,
+    sameSite: 'lax'
+  }));
+
+  // 4. OAuth Configuration Helper (The Handshake)
   const getOAuthConfig = async (platform: string, req: express.Request, agencyClientId?: string) => {
     let finalId = null;
     let finalSecret = null;
-    
     const pKey = platform.toLowerCase();
-    console.log(`[OAuth] --- START FULL HANDSHAKE: ${pKey} ---`);
 
-    // STEP 1: Environment Variables (Requires BOTH)
+    // HANDSHAKE STEP 1: Environment (Complete Pairs Only)
     const envId = process.env[`${pKey.toUpperCase()}_CLIENT_ID`] || process.env[`${pKey.toUpperCase()}_APP_ID` ];
     const envSecret = process.env[`${pKey.toUpperCase()}_CLIENT_SECRET`] || process.env[`${pKey.toUpperCase()}_APP_SECRET` ];
-    
     if (envId && envSecret) {
-      finalId = envId;
-      finalSecret = envSecret;
-      console.log(`[OAuth] Step 1: Complete pair found in Environment`);
+      finalId = envId; finalSecret = envSecret;
     }
 
-    // STEP 2: Client-Specific Firestore (Requires BOTH)
+    // HANDSHAKE STEP 2: Client Config
     if (agencyClientId && (!finalId || !finalSecret)) {
       try {
         if (adminDb) {
           const doc = await adminDb.collection('client_social_configs').doc(agencyClientId).get();
-          if (doc.exists) {
-            const data = doc.data();
-            if (data) {
-              if (pKey === 'facebook' && data.facebookAppId && data.facebookAppSecret) {
-                finalId = data.facebookAppId;
-                finalSecret = data.facebookAppSecret;
-              } else if (pKey === 'linkedin' && data.linkedinClientId && data.linkedinClientSecret) {
-                finalId = data.linkedinClientId;
-                finalSecret = data.linkedinClientSecret;
-              }
-              if (finalId) console.log(`[OAuth] Step 2: Complete pair found in Client Firestore`);
+          const data = doc.data();
+          if (data) {
+            if (pKey === 'facebook' && data.facebookAppId && data.facebookAppSecret) {
+              finalId = data.facebookAppId; finalSecret = data.facebookAppSecret;
+            } else if (pKey === 'linkedin' && data.linkedinClientId && data.linkedinClientSecret) {
+              finalId = data.linkedinClientId; finalSecret = data.linkedinClientSecret;
             }
           }
         }
-      } catch (e) { console.warn("[OAuth] Step 2 bypass"); }
+      } catch (e) {}
     }
 
-    // STEP 3: Global Firestore (Requires BOTH)
+    // HANDSHAKE STEP 3: Global Config
     if (!finalId || !finalSecret) {
       try {
         if (adminDb) {
           const doc = await adminDb.collection('global_settings').doc('oauth_credentials').get();
-          if (doc.exists) {
-            const data = doc.data();
-            if (data && data[pKey] && data[pKey].clientId && data[pKey].clientSecret) {
-              finalId = data[pKey].clientId;
-              finalSecret = data[pKey].clientSecret;
-              console.log(`[OAuth] Step 3: Complete pair found in Global Firestore`);
-            }
+          const data = doc.data();
+          if (data && data[pKey] && data[pKey].clientId && data[pKey].clientSecret) {
+            finalId = data[pKey].clientId; finalSecret = data[pKey].clientSecret;
           }
         }
-      } catch (e) { console.warn("[OAuth] Step 3 bypass"); }
+      } catch (e) {}
     }
 
-    // STEP 4: Emergency Hardcoded Fallback (Facebook Only)
+    // HANDSHAKE STEP 4: Absolute Fallback (Facebook)
     if (pKey === 'facebook' && (!finalId || !finalSecret)) {
       finalId = '1621305335865053';
       finalSecret = '4e450f5b4fd53d0853a1e4342d943f58';
-      console.log(`[OAuth] Step 4: EMERGENCY HARDCODED FALLBACK ACTIVATED`);
     }
-
-    const redirectUri = `https://${req.get('host')}/api/auth/${platform}/callback`;
-    
-    console.log(`[OAuth] --- HANDSHAKE READY: ${pKey} ---`, { 
-      id: !!finalId, 
-      secret: !!finalSecret 
-    });
 
     const configs: Record<string, any> = {
       linkedin: {
@@ -189,47 +185,40 @@ async function startServer() {
       ...configs[pKey], 
       clientId: finalId, 
       clientSecret: finalSecret, 
-      redirectUri 
+      redirectUri: `https://${req.get('host')}/api/auth/${platform}/callback` 
     };
   };
 
-  // OAuth Initiation Routes
+  // 5. OAuth Initiation
   app.get("/api/auth/:platform", async (req, res) => {
     const { platform } = req.params;
-    const { clientId: client_id, mobile } = req.query; // The client ID from our agency database
+    const { clientId: client_id, mobile } = req.query;
     
     const config = await getOAuthConfig(platform, req, client_id as string);
     if (!config.clientId) {
-      return res.status(400).json({ error: `OAuth not configured for ${platform}. Please add credentials in API Settings.` });
+      return res.status(400).json({ error: `OAuth not configured for ${platform}.` });
     }
 
-    const state = JSON.stringify({
+    const state = Buffer.from(JSON.stringify({
       csrf: Math.random().toString(36).substring(7),
       clientId: client_id,
       mobile: mobile === 'true'
-    });
-    const encodedState = Buffer.from(state).toString('base64');
+    })).toString('base64');
 
-    // Store agency client ID in session to associate token later (as fallback)
     if (req.session) {
       req.session.pendingClientId = client_id;
       req.session.platform = platform;
-      req.session.isMobile = mobile === 'true';
     }
 
     const params = new URLSearchParams({
-      response_type: 'code',
-      client_id: config.clientId,
-      redirect_uri: config.redirectUri,
-      state: encodedState,
-      scope: config.scope
+      response_type: 'code', client_id: config.clientId,
+      redirect_uri: config.redirectUri, state, scope: config.scope
     });
 
     res.json({ url: `${config.authUrl}?${params.toString()}` });
   });
 
-  // OAuth Callback Routes
-  // OAuth Callback Routes
+  // 6. OAuth Callback
   app.get("/api/auth/:platform/callback", async (req, res) => {
     const { platform } = req.params;
     const { code, state: encodedState } = req.query;
