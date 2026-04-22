@@ -97,116 +97,75 @@ export function SocialAccounts() {
   }, [currentConfig, currentClient]);
 
   React.useEffect(() => {
+    // 1. Handle return parameters from same-tab redirect (Version 1.9.0)
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('status');
+    const platform = params.get('platform');
+    
+    if (status === 'success' && platform) {
+      toast.success(`${platform} account connected successfully!`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (status === 'error') {
+      toast.error(`Connection failed: ${params.get('message')}`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    // 2. Handle Popup Messages (Legacy Fallback)
     const handleOAuthMessage = async (event: MessageEvent) => {
-      // Validate origin
       if (!event.origin.includes('run.app') && !event.origin.includes('localhost')) return;
-
       if (event.data?.type === 'OAUTH_SUCCESS') {
-        const { platform, token, refreshToken, expiresIn, handle: platformHandle, platformAccountId } = event.data;
-        
-        if (!currentClient) return;
-
-        const accountId = Math.random().toString(36).substr(2, 9);
-        const accountData = {
-          id: accountId,
-          platform: platform,
-          handle: platformHandle || `Connected ${platform}`,
-          platformAccountId: platformAccountId || null,
-          clientId: currentClient.id,
-          status: 'connected',
-          lastSynced: new Date().toISOString(),
-          createdAt: serverTimestamp()
-        };
-
-        try {
-          await setDoc(doc(db, 'social_accounts', accountId), accountData);
-          toast.success(`${platform} account connected successfully!`);
-        } catch (error) {
-          console.error("Error saving social account:", error);
-          handleFirestoreError(error, OperationType.WRITE, `social_accounts/${accountId}`);
-          toast.error('Failed to save social account connection.');
-        }
-        
+        toast.success(`${event.data.platform} account connected successfully!`);
         setIsConnecting(false);
-        setSelectedPlatform(null);
       }
     };
-
     window.addEventListener('message', handleOAuthMessage);
 
-    // 2. Handle Native Mobile Deep Links (Capacitor)
+    // 3. Handle Native Mobile Deep Links
     const setupDeepLinkListener = async () => {
       if (!Capacitor.isNativePlatform()) return;
-
-      const listener = await App.addListener('appUrlOpen', async (data) => {
-        // Expected URL: com.stratos.agencyos://oauth-callback?platform=linkedin&status=success...
+      return await App.addListener('appUrlOpen', async (data) => {
         if (data.url.includes('oauth-callback')) {
           const url = new URL(data.url);
-          const params = new URLSearchParams(url.search);
-          const platform = params.get('platform');
-          const status = params.get('status');
-          const handle = params.get('handle');
-
-          if (status === 'success') {
-            toast.success(`${platform} account connected successfully!`);
-            // Close the native browser tab
+          const p = new URLSearchParams(url.search);
+          if (p.get('status') === 'success') {
+            toast.success(`${p.get('platform')} connected!`);
             await Browser.close();
           } else {
-            toast.error(`Failed to connect ${platform} account.`);
+            toast.error('Connection failed');
           }
         }
       });
-
-      return listener;
     };
 
     const deepLinkListenerPromise = setupDeepLinkListener();
-
     return () => {
       window.removeEventListener('message', handleOAuthMessage);
       deepLinkListenerPromise.then(l => l?.remove());
     };
-  }, [currentClient, addSocialAccount]);
+  }, [currentClient]);
 
   const isAdmin = profile?.role === 'admin';
-
   const clientAccounts = socialAccounts.filter(acc => acc.clientId === currentClient?.id);
 
   const handleSaveConfig = async () => {
     if (!currentClient) return;
-    
     const configData = {
-      clientId: currentClient.id,
-      facebookAppId: fbAppId,
-      facebookAppSecret: fbAppSecret,
-      linkedinClientId: liClientId,
-      linkedinClientSecret: liClientSecret,
-      tiktokKey: ttKey,
-      tiktokSecret: ttSecret,
-      twitterClientId: twClientId,
-      twitterClientSecret: twClientSecret,
+      clientId: currentClient.id, facebookAppId: fbAppId, facebookAppSecret: fbAppSecret,
+      linkedinClientId: liClientId, linkedinClientSecret: liClientSecret,
+      tiktokKey: ttKey, tiktokSecret: ttSecret,
+      twitterClientId: twClientId, twitterClientSecret: twClientSecret,
       fbVerifyToken: fbVerifyToken,
     };
 
     try {
-      // 1. Save to Firestore for client-side sync
-      await setDoc(doc(db, 'client_social_configs', currentClient.id), {
-        ...configData,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-
-      // 2. Save to Prisma for server-side access (fixes PERMISSION_DENIED)
+      await setDoc(doc(db, 'client_social_configs', currentClient.id), { ...configData, updatedAt: serverTimestamp() }, { merge: true });
       await fetch(getApiUrl(`/api/clients/${currentClient.id}/social-config`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(configData)
       });
-
       toast.success('API Configuration saved successfully!');
       setIsConfiguring(false);
     } catch (error) {
-      console.error("Error saving config:", error);
-      handleFirestoreError(error, OperationType.WRITE, `client_social_configs/${currentClient.id}`);
       toast.error('Failed to save configuration.');
     }
   };
@@ -216,26 +175,18 @@ export function SocialAccounts() {
     if (!currentClient || !platform) return;
     
     try {
-      // Fetch the OAuth URL from our server
       const response = await fetch(getApiUrl(`/api/auth/${platform}?clientId=${currentClient.id}&mobile=${Capacitor.isNativePlatform()}`));
       if (!response.ok) {
-        const error = await response.json();
-        toast.error(error.error || 'Failed to initiate connection');
+        toast.error((await response.json()).error || 'Failed to initiate connection');
         return;
       }
       
       const { url } = await response.json();
-      
       if (Capacitor.isNativePlatform()) {
-        // Native Mobile: Use Capacitor Browser to handle the OAuth flow securely
         await Browser.open({ url });
       } else {
-        // Web: Use a standard popup
-        window.open(
-          url,
-          'oauth_popup',
-          'width=600,height=700'
-        );
+        // SAME-TAB REDIRECT (Faster UX)
+        window.location.href = url;
       }
     } catch (error: any) {
       console.error('Connection error:', error);
