@@ -61,7 +61,7 @@ async function startServer() {
   // PRIORITY ROUTES (Registered before any middleware)
   app.get("/health", (req, res) => res.status(200).send("OK - Baseline Healthy"));
   
-  app.get("/api/auth/debug", async (req, res) => {
+    app.get("/api/auth/debug", async (req, res) => {
     try {
       console.log("[Debug] Running Diagnostic Ping...");
       let fbConfig = null;
@@ -74,7 +74,7 @@ async function startServer() {
       }
       
       res.json({
-        status: "Diagnostic 1.1.11",
+        status: "Diagnostic 1.5.0",
         database: {
           isInitialized: !!adminDb,
           isReady: dbReady,
@@ -82,7 +82,11 @@ async function startServer() {
         },
         system: {
           uptime: process.uptime(),
-          nodeVersion: process.version
+          nodeVersion: process.version,
+          env: {
+            hasFbId: !!(process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID),
+            hasFbSecret: !!(process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET)
+          }
         }
       });
     } catch (e: any) {
