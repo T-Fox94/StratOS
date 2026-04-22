@@ -12,13 +12,21 @@ import admin from 'firebase-admin';
 import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
 
-const prisma = new PrismaClient();
-let adminDb: any = null; // Declare at top level so OAuth functions can see it
+let adminDb: any = null;
+let prisma: any = null;
 
 async function startServer() {
   console.log("-----------------------------------------");
-  console.log("[SERVER] Version 1.1.7 - Ironclad Recovery");
+  console.log("[SERVER] Version 1.1.11 - Baseline Recovery");
   console.log("-----------------------------------------");
+
+  // Initialize Prisma safely
+  try {
+    prisma = new PrismaClient();
+    console.log("[Prisma] Client Instance Hooked");
+  } catch (e: any) {
+    console.error("[Prisma] Fatal Init Failure:", e.message);
+  }
 
   let firebaseConfig: any = {};
   try {
@@ -27,17 +35,17 @@ async function startServer() {
       firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     }
   } catch (e) {
-    console.warn("[SERVER] Could not load firebase-applet-config.json");
+    console.warn("[SERVER] Config Read Warning");
   }
 
-  // Initialize Firebase Admin for server-side operations
+  // Initialize Firebase Admin
   try {
     if (admin.apps.length === 0) {
       admin.initializeApp({
         credential: admin.credential.applicationDefault(),
-        projectId: firebaseConfig.projectId,
+        projectId: firebaseConfig.projectId || process.env.GOOGLE_CLOUD_PROJECT,
       });
-      console.log("[FirebaseAdmin] Handshake Success");
+      console.log("[FirebaseAdmin] Handshake Locked");
     }
     
     const adminApp = admin.app();
@@ -45,10 +53,43 @@ async function startServer() {
       ? getAdminFirestore(adminApp, firebaseConfig.firestoreDatabaseId)
       : getAdminFirestore(adminApp);
   } catch (e: any) {
-    console.warn("[FirebaseAdmin] Startup check (ADC):", e.message);
+    console.warn("[FirebaseAdmin] Startup Bypass:", e.message);
   }
 
   const app = express();
+  
+  // PRIORITY ROUTES (Registered before any middleware)
+  app.get("/health", (req, res) => res.status(200).send("OK - Baseline Healthy"));
+  
+  app.get("/api/auth/debug", async (req, res) => {
+    try {
+      console.log("[Debug] Running Diagnostic Ping...");
+      let fbConfig = null;
+      let dbReady = false;
+
+      if (adminDb) {
+        const globalDoc = await adminDb.collection('global_settings').doc('oauth_credentials').get();
+        fbConfig = globalDoc.exists ? globalDoc.data()?.facebook : null;
+        dbReady = true;
+      }
+      
+      res.json({
+        status: "Diagnostic 1.1.11",
+        database: {
+          isInitialized: !!adminDb,
+          isReady: dbReady,
+          facebookConfigFound: !!fbConfig
+        },
+        system: {
+          uptime: process.uptime(),
+          nodeVersion: process.version
+        }
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   const PORT = process.env.PORT || 8080;
 
   app.use(helmet({
@@ -174,7 +215,8 @@ async function startServer() {
 
     // 4. HARDCODED EMERGENCY FALLBACK (Facebook Only)
     // This ensures connectivity even if all other sources fail.
-    if (platform === 'facebook' && (!clientId || !clientSecret)) {
+    const platformKey = platform.toLowerCase();
+    if (platformKey === 'facebook' && (!clientId || !clientSecret)) {
       clientId = '1621305335865053';
       clientSecret = '4e450f5b4fd53d0853a1e4342d943f58';
       console.log(`[OAuth] Applying Hardcoded EMERGENCY FALLBACK for Facebook`);
