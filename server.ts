@@ -16,6 +16,7 @@ let adminDb: any = null;
 let prisma: any = null;
 
 async function startServer() {
+  const PORT = process.env.PORT || 8080;
   console.log("-----------------------------------------");
   console.log("[SERVER] Version 1.1.11 - Baseline Recovery");
   console.log("-----------------------------------------");
