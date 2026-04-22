@@ -173,7 +173,7 @@ async function startServer() {
     }
 
     // 4. HARDCODED EMERGENCY FALLBACK (Facebook Only)
-    // This guarantees connectivity even if all other sources fail.
+    // This ensures connectivity even if all other sources fail.
     if (platform === 'facebook' && (!clientId || !clientSecret)) {
       clientId = '1621305335865053';
       clientSecret = '4e450f5b4fd53d0853a1e4342d943f58';
