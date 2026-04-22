@@ -123,131 +123,82 @@ async function startServer() {
     sameSite: 'lax'
   }));
 
-  // OAuth Configuration Helper
-  const getOAuthConfig = async (platform: string, req: express.Request, clientIdParam?: string) => {
-    // AI Studio provides APP_URL and SHARED_APP_URL environment variables
-    const APP_URL = process.env.APP_URL || 'http://localhost:3000';
-    const SHARED_URL = process.env.SHARED_APP_URL || APP_URL;
+  // OAuth Configuration Helper (Refactored v1.5.0)
+  const getOAuthConfig = async (platform: string, req: express.Request, agencyClientId?: string) => {
+    let searchId = null;
+    let searchSecret = null;
     
-    // Determine which base URL to use based on the request host
-    const host = req.get('host') || '';
-    const isShared = host.includes('ais-pre');
-    const baseUrl = isShared ? SHARED_URL : APP_URL;
-    
-    const envKeys = Object.keys(process.env);
-    console.log(`[OAuth] Diagnostic: Checking environment for "${platform}"...`);
-    
-    // Fuzzy lookup: Check for both PLATFORM_CLIENT_ID and PLATFORM_APP_ID
-    const possibleClientIdKeys = [`${platform.toUpperCase()}_CLIENT_ID`, `${platform.toUpperCase()}_APP_ID` ];
-    const possibleClientSecretKeys = [`${platform.toUpperCase()}_CLIENT_SECRET`, `${platform.toUpperCase()}_APP_SECRET` ];
-    
-    let clientId = null;
-    let clientSecret = null;
+    const pKey = platform.toLowerCase();
+    console.log(`[OAuth] --- START CONFIG LOOKUP: ${pKey} (Agency Client: ${agencyClientId || 'global'}) ---`);
 
-    // Direct check first
-    for (const key of possibleClientIdKeys) {
-      if (process.env[key]) {
-        clientId = process.env[key];
-        console.log(`[OAuth] Found Client ID in Env using key: ${key}`);
-        break;
-      }
-    }
+    // 1. Try Environment Variables First
+    const envIdKeys = [`${pKey.toUpperCase()}_CLIENT_ID`, `${pKey.toUpperCase()}_APP_ID` ];
+    const envSecretKeys = [`${pKey.toUpperCase()}_CLIENT_SECRET`, `${pKey.toUpperCase()}_APP_SECRET` ];
     
-    for (const key of possibleClientSecretKeys) {
-      if (process.env[key]) {
-        clientSecret = process.env[key];
-        console.log(`[OAuth] Found Client Secret in Env using key: ${key}`);
-        break;
-      }
-    }
+    for (const key of envIdKeys) { if (process.env[key]) { searchId = process.env[key]; break; } }
+    for (const key of envSecretKeys) { if (process.env[key]) { searchSecret = process.env[key]; break; } }
+    
+    if (searchId) console.log(`[OAuth] Step 1: Found ${pKey} keys in Environment`);
 
-    // 1. Check for client-specific credentials in Firestore first (Persistence for Cloud Run)
-    if (clientIdParam) {
-      console.log(`[OAuth] Fetching client config for: ${clientIdParam} from Firestore`);
-      try {
-        const clientConfigDoc = await adminDb.collection('client_social_configs').doc(clientIdParam).get();
-        if (clientConfigDoc.exists) {
-          const data = clientConfigDoc.data();
-          if (data) {
-            console.log(`[OAuth] Found Firestore settings for ${clientIdParam}. Checking for ${platform} keys...`);
-            if (platform === 'facebook' && data.facebookAppId && data.facebookAppSecret) {
-              clientId = data.facebookAppId;
-              clientSecret = data.facebookAppSecret;
-              console.log(`[OAuth] Overriding with client-specific Facebook keys from Firestore`);
-            } else if (platform === 'instagram' && data.instagramAppId && data.instagramAppSecret) {
-              clientId = data.instagramAppId;
-              clientSecret = data.instagramAppSecret;
-            } else if (platform === 'linkedin' && data.linkedinClientId && data.linkedinClientSecret) {
-              clientId = data.linkedinClientId;
-              clientSecret = data.linkedinClientSecret;
-            } else if (platform === 'tiktok' && data.tiktokKey && data.tiktokSecret) {
-              clientId = data.tiktokKey;
-              clientSecret = data.tiktokSecret;
-            } else if (platform === 'twitter' && data.twitterClientId && data.twitterClientSecret) {
-              clientId = data.twitterClientId;
-              clientSecret = data.twitterClientSecret;
-            }
-          }
-        }
-      } catch (fsError: any) {
-        console.warn("[OAuth] Firestore client config lookup failed:", fsError.message);
-      }
-    }
-
-    // 3. Fallback to Firestore global settings if still missing
-    if (!clientId || !clientSecret) {
+    // 2. Try Client-Specific Firestore Config (if applicable)
+    if (agencyClientId && (!searchId || !searchSecret)) {
       try {
         if (adminDb) {
-          const globalSettingsDoc = await adminDb.collection('global_settings').doc('oauth_credentials').get();
-          if (globalSettingsDoc.exists) {
-            const data = globalSettingsDoc.data();
-            if (data && data[platform]) {
-              clientId = clientId || data[platform].clientId;
-              clientSecret = clientSecret || data[platform].clientSecret;
-              if (data[platform].clientId) console.log(`[OAuth] Using global Firestore credentials for ${platform}`);
+          const clientDoc = await adminDb.collection('client_social_configs').doc(agencyClientId).get();
+          if (clientDoc.exists) {
+            const data = clientDoc.data();
+            if (data) {
+              if (pKey === 'facebook' || pKey === 'instagram') {
+                searchId = searchId || data.facebookAppId;
+                searchSecret = searchSecret || data.facebookAppSecret;
+              } else if (pKey === 'linkedin') {
+                searchId = searchId || data.linkedinClientId;
+                searchSecret = searchSecret || data.linkedinClientSecret;
+              }
+              if (searchId) console.log(`[OAuth] Step 2: Found ${pKey} keys in Client Document`);
             }
           }
         }
-      } catch (fsError: any) {
-        console.warn("[OAuth] Firestore global settings lookup failed:", fsError.message);
-      }
+      } catch (e: any) { console.warn("[OAuth] Step 2 Error:", e.message); }
     }
 
-    // 4. HARDCODED EMERGENCY FALLBACK (Facebook Only)
-    const platformKey = platform.toLowerCase();
-    if (platformKey === 'facebook' && (!clientId || !clientSecret)) {
-      clientId = '1621305335865053';
-      clientSecret = '4e450f5b4fd53d0853a1e4342d943f58';
-      console.log(`[OAuth] Applying Hardcoded EMERGENCY FALLBACK for Facebook`);
+    // 3. Try Global Firestore Config Fallback
+    if (!searchId || !searchSecret) {
+      try {
+        if (adminDb) {
+          const globalDoc = await adminDb.collection('global_settings').doc('oauth_credentials').get();
+          if (globalDoc.exists) {
+            const data = globalDoc.data();
+            if (data && data[pKey]) {
+              searchId = searchId || data[pKey].clientId;
+              searchSecret = searchSecret || data[pKey].clientSecret;
+              if (searchId) console.log(`[OAuth] Step 3: Found ${pKey} keys in Global Settings`);
+            }
+          }
+        }
+      } catch (e: any) { console.warn("[OAuth] Step 3 Error:", e.message); }
     }
-    
-    console.log(`[OAuth] Final evaluation for ${platform}:`, { 
-      hasClientId: !!clientId, 
-      hasClientSecret: !!clientSecret
-    });
+
+    // 4. Hardcoded Emergency Fallback (Facebook Only)
+    if (pKey === 'facebook' && (!searchId || !searchSecret)) {
+      searchId = '1621305335865053';
+      searchSecret = '4e450f5b4fd53d0853a1e4342d943f58';
+      console.log(`[OAuth] Step 4: Applying Hardcoded EMERGENCY fallback for Facebook`);
+    }
 
     const redirectUri = `https://${req.get('host')}/api/auth/${platform}/callback`;
     
+    console.log(`[OAuth] --- FINISHED: ${pKey} ---`, { 
+      foundId: !!searchId, 
+      foundSecret: !!searchSecret,
+      idPrefix: searchId ? searchId.substring(0, 4) + '...' : 'none'
+    });
+
     const configs: Record<string, any> = {
       linkedin: {
         authUrl: 'https://www.linkedin.com/oauth/v2/authorization',
         tokenUrl: 'https://www.linkedin.com/oauth/v2/accessToken',
         scope: 'openid profile email w_member_social'
-      },
-      instagram: {
-        authUrl: 'https://api.instagram.com/oauth/authorize',
-        tokenUrl: 'https://api.instagram.com/oauth/access_token',
-        scope: 'instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_insights'
-      },
-      tiktok: {
-        authUrl: 'https://www.tiktok.com/v2/auth/authorize/',
-        tokenUrl: 'https://open.tiktokapis.com/v2/oauth/token/',
-        scope: 'user.info.basic,video.upload,video.publish'
-      },
-      twitter: {
-        authUrl: 'https://twitter.com/i/oauth2/authorize',
-        tokenUrl: 'https://api.twitter.com/2/oauth2/token',
-        scope: 'tweet.read tweet.write users.read offline.access'
       },
       facebook: {
         authUrl: 'https://www.facebook.com/v18.0/dialog/oauth',
@@ -256,7 +207,12 @@ async function startServer() {
       }
     };
 
-    return { ...configs[platform], clientId, clientSecret, redirectUri };
+    return { 
+      ...configs[pKey], 
+      clientId: searchId, 
+      clientSecret: searchSecret, 
+      redirectUri 
+    };
   };
 
   // OAuth Initiation Routes
