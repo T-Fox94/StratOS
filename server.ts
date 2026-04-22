@@ -892,9 +892,6 @@ async function startServer() {
     }
   });
 
-  // Root redirect/status
-  app.get("/health", (req, res) => res.json({ status: "ok", version: "1.1.2" }));
-
   // Vite middleware for development - only in explicit local dev
   const isProd = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
   
