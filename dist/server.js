@@ -4,130 +4,75 @@ import helmet from "helmet";
 import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import { PrismaClient } from "@prisma/client";
-import path2 from "path";
+import path from "path";
 import cookieSession from "cookie-session";
 import axios from "axios";
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
 import admin from "firebase-admin";
 import { getFirestore as getAdminFirestore } from "firebase-admin/firestore";
-
-// firebase-applet-config.json
-var firebase_applet_config_default = {
-  projectId: "stratos-1d3dd",
-  appId: "1:645192182585:web:1c743e6f583b23bb3dd6e8",
-  apiKey: "AIzaSyBXxsE4iEQZo6-yV9nOTxqVrFRW31Mi7ug",
-  authDomain: "stratos-1d3dd.firebaseapp.com",
-  firestoreDatabaseId: "ai-studio-fea3b390-d69d-4c49-9fc0-bc03b82a3ff0",
-  storageBucket: "stratos-1d3dd.firebasestorage.app",
-  messagingSenderId: "645192182585",
-  measurementId: ""
-};
-
-// scripts/icon-generator.ts
-import { GoogleGenAI } from "@google/genai";
 import fs from "fs";
-import path from "path";
-import sharp from "sharp";
-async function generateAndSaveAppIcon() {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-  if (!apiKey) {
-    console.error("Neither GEMINI_API_KEY nor API_KEY is set in the environment.");
-    return;
+var adminDb = null;
+var prisma = null;
+async function startServer() {
+  const PORT = process.env.PORT || 8080;
+  console.log("-----------------------------------------");
+  console.log("[SERVER] Version 1.1.11 - Baseline Recovery");
+  console.log("-----------------------------------------");
+  try {
+    prisma = new PrismaClient();
+    console.log("[Prisma] Client Instance Hooked");
+  } catch (e) {
+    console.error("[Prisma] Fatal Init Failure:", e.message);
   }
-  const ai = new GoogleGenAI({ apiKey });
-  const prompt = "A professional, minimalist, and futuristic app icon for 'StratOS'. The design should feature a stylized 'S' integrated with a strategic grid or network pattern. Use a sophisticated color palette of deep navy, electric blue, and silver. High quality, clean lines, suitable for a mobile app icon.";
-  console.log("Generating icon with Gemini...");
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-image",
-    contents: {
-      parts: [
-        {
-          text: prompt
-        }
-      ]
-    },
-    config: {
-      imageConfig: {
-        aspectRatio: "1:1"
+  let firebaseConfig = {};
+  try {
+    const configPath = path.resolve(process.cwd(), "firebase-applet-config.json");
+    if (fs.existsSync(configPath)) {
+      firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    }
+  } catch (e) {
+    console.warn("[SERVER] Config Read Warning");
+  }
+  try {
+    if (admin.apps.length === 0) {
+      admin.initializeApp({
+        credential: admin.credential.applicationDefault(),
+        projectId: firebaseConfig.projectId || process.env.GOOGLE_CLOUD_PROJECT
+      });
+      console.log("[FirebaseAdmin] Handshake Locked");
+    }
+    const adminApp = admin.app();
+    adminDb = firebaseConfig.firestoreDatabaseId ? getAdminFirestore(adminApp, firebaseConfig.firestoreDatabaseId) : getAdminFirestore(adminApp);
+  } catch (e) {
+    console.warn("[FirebaseAdmin] Startup Bypass:", e.message);
+  }
+  const app = express();
+  app.get("/health", (req, res) => res.status(200).send("OK - Healthy"));
+  app.get("/api/auth/debug", async (req, res) => {
+    try {
+      console.log("[Debug] Running Handshake Diagnostic...");
+      let fbConfig = null;
+      let dbReady = false;
+      if (adminDb) {
+        const globalDoc = await adminDb.collection("global_settings").doc("oauth_credentials").get();
+        fbConfig = globalDoc.exists ? globalDoc.data()?.facebook : null;
+        dbReady = true;
       }
+      res.json({
+        status: "Diagnostic 1.8.0",
+        database: { isInitialized: !!adminDb, isReady: dbReady },
+        env: {
+          hasFbId: !!(process.env.FACEBOOK_CLIENT_ID || process.env.FACEBOOK_APP_ID),
+          hasFbSecret: !!(process.env.FACEBOOK_CLIENT_SECRET || process.env.FACEBOOK_APP_SECRET)
+        },
+        lookup: {
+          facebookResult: fbConfig ? "Found in Firestore" : "Not in Firestore",
+          hardcodedFallbackActive: true
+        }
+      });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
     }
   });
-  let base64Data;
-  for (const part of response.candidates[0].content.parts) {
-    if (part.inlineData) {
-      base64Data = part.inlineData.data;
-      break;
-    }
-  }
-  if (!base64Data) {
-    console.error("No image data returned from Gemini.");
-    return;
-  }
-  const buffer = Buffer.from(base64Data, "base64");
-  const publicPath = path.join(process.cwd(), "public", "icon.png");
-  if (!fs.existsSync(path.join(process.cwd(), "public"))) {
-    fs.mkdirSync(path.join(process.cwd(), "public"), { recursive: true });
-  }
-  fs.writeFileSync(publicPath, buffer);
-  console.log(`Saved web icon to ${publicPath}`);
-  const androidResPath = path.join(process.cwd(), "android", "app", "src", "main", "res");
-  const sizes = [
-    { name: "mipmap-mdpi", size: 48 },
-    { name: "mipmap-hdpi", size: 72 },
-    { name: "mipmap-xhdpi", size: 96 },
-    { name: "mipmap-xxhdpi", size: 144 },
-    { name: "mipmap-xxxhdpi", size: 192 }
-  ];
-  if (fs.existsSync(androidResPath)) {
-    for (const { name, size } of sizes) {
-      const dir = path.join(androidResPath, name);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      const iconPath = path.join(dir, "ic_launcher.png");
-      const roundIconPath = path.join(dir, "ic_launcher_round.png");
-      await sharp(buffer).resize(size, size).toFile(iconPath);
-      const circleMask = Buffer.from(
-        `<svg><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" /></svg>`
-      );
-      await sharp(buffer).resize(size, size).composite([{ input: circleMask, blend: "dest-in" }]).toFile(roundIconPath);
-      console.log(`Saved Android icons to ${dir}`);
-    }
-  } else {
-    console.warn("Android resource directory not found. Skipping Android icon generation.");
-  }
-  console.log("App icon generation and organization complete.");
-}
-if (import.meta.url.endsWith(process.argv[1])) {
-  generateAndSaveAppIcon().catch(console.error);
-}
-
-// server.ts
-var prisma = new PrismaClient();
-var firebaseApp = initializeApp(firebase_applet_config_default);
-var db = getFirestore(firebaseApp, firebase_applet_config_default.firestoreDatabaseId);
-if (admin.apps.length === 0) {
-  try {
-    admin.initializeApp({
-      credential: admin.credential.applicationDefault(),
-      projectId: firebase_applet_config_default.projectId
-    });
-    console.log("[FirebaseAdmin] Initialized with applicationDefault credentials");
-  } catch (e) {
-    console.error("[FirebaseAdmin] Initialization error, falling back to basic init:", e);
-    admin.initializeApp({
-      projectId: firebase_applet_config_default.projectId
-    });
-  }
-}
-var adminApp = admin.app();
-console.log(`[FirebaseAdmin] App Name: ${adminApp.name}, Project ID: ${adminApp.options.projectId}`);
-var adminDb = firebase_applet_config_default.firestoreDatabaseId ? getAdminFirestore(adminApp, firebase_applet_config_default.firestoreDatabaseId) : getAdminFirestore(adminApp);
-console.log(`[FirebaseAdmin] Firestore initialized with Database ID: ${firebase_applet_config_default.firestoreDatabaseId || "(default)"}`);
-async function startServer() {
-  const app = express();
-  const PORT = process.env.PORT || 3e3;
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
@@ -140,148 +85,68 @@ async function startServer() {
     crossOriginEmbedderPolicy: false
   }));
   app.use(cors({
-    origin: [
-      "https://localhost",
-      "http://localhost:5173",
-      /\.run\.app$/
-      // Allow all your Google Cloud Run subdomains
-    ],
+    origin: ["https://localhost", "http://localhost:5173", /\.run\.app$/],
     credentials: true
   }));
   app.use(express.json());
   app.use(cookieSession({
     name: "__Host-session",
-    // Prefixed for extra security
     keys: [process.env.SESSION_SECRET || "stratos-production-fallback-key-rotate-me"],
     maxAge: 24 * 60 * 60 * 1e3,
-    // 24 hours
     secure: true,
     httpOnly: true,
     sameSite: "lax"
   }));
-  const getOAuthConfig = async (platform, req, clientIdParam) => {
-    const APP_URL = process.env.APP_URL || "http://localhost:3000";
-    const SHARED_URL = process.env.SHARED_APP_URL || APP_URL;
-    const host = req.get("host") || "";
-    const isShared = host.includes("ais-pre");
-    const baseUrl = isShared ? SHARED_URL : APP_URL;
-    const visibleKeys = Object.keys(process.env).filter((k) => k.includes(platform.toUpperCase()));
-    console.log(`[OAuth] Visible Environment Keys for ${platform}:`, visibleKeys);
-    console.log(`[OAuth] Raw platform string: "${platform}" (length: ${platform.length})`);
-    const redirectUri = `${baseUrl}/api/auth/${platform}/callback`;
-    console.log(`[OAuth] Using redirect_uri: ${redirectUri}`);
-    let clientId = process.env[`${platform.toUpperCase()}_CLIENT_ID`];
-    let clientSecret = process.env[`${platform.toUpperCase()}_CLIENT_SECRET`];
-    console.log(`[OAuth] Initial credentials for ${platform}:`, { hasClientId: !!clientId, hasClientSecret: !!clientSecret });
-    if (clientIdParam) {
-      console.log(`[OAuth] Attempting to fetch client-specific credentials for: ${clientIdParam} from Prisma`);
+  const getOAuthConfig = async (platform, req, agencyClientId) => {
+    let finalId = null;
+    let finalSecret = null;
+    const pKey = platform.toLowerCase();
+    const envId = process.env[`${pKey.toUpperCase()}_CLIENT_ID`] || process.env[`${pKey.toUpperCase()}_APP_ID`];
+    const envSecret = process.env[`${pKey.toUpperCase()}_CLIENT_SECRET`] || process.env[`${pKey.toUpperCase()}_APP_SECRET`];
+    if (envId && envSecret) {
+      finalId = envId;
+      finalSecret = envSecret;
+    }
+    if (agencyClientId && (!finalId || !finalSecret)) {
       try {
-        const clientConfig = await prisma.clientSocialConfig.findUnique({
-          where: { clientId: clientIdParam }
-        });
-        if (clientConfig) {
-          console.log(`[OAuth] Found client-specific config for ${clientIdParam} in Prisma`);
-          if (platform === "facebook" && clientConfig.facebookAppId && clientConfig.facebookAppSecret) {
-            clientId = clientConfig.facebookAppId;
-            clientSecret = clientConfig.facebookAppSecret;
-            console.log(`[OAuth] Using client-specific Facebook credentials from Prisma`);
-          } else if (platform === "instagram" && clientConfig.instagramAppId && clientConfig.instagramAppSecret) {
-            clientId = clientConfig.instagramAppId;
-            clientSecret = clientConfig.instagramAppSecret;
-          } else if (platform === "linkedin" && clientConfig.linkedinClientId && clientConfig.linkedinClientSecret) {
-            clientId = clientConfig.linkedinClientId;
-            clientSecret = clientConfig.linkedinClientSecret;
-            console.log(`[OAuth] Using client-specific LinkedIn credentials from Prisma`);
-          } else if (platform === "tiktok" && clientConfig.tiktokKey && clientConfig.tiktokSecret) {
-            clientId = clientConfig.tiktokKey;
-            clientSecret = clientConfig.tiktokSecret;
-            console.log(`[OAuth] Using client-specific TikTok credentials from Prisma`);
-          } else if (platform === "twitter" && clientConfig.twitterClientId && clientConfig.twitterClientSecret) {
-            clientId = clientConfig.twitterClientId;
-            clientSecret = clientConfig.twitterClientSecret;
-            console.log(`[OAuth] Using client-specific Twitter credentials from Prisma`);
-          }
-        } else {
-          console.log(`[OAuth] No client-specific config found for ${clientIdParam} in Prisma, checking Firestore fallback...`);
-          try {
-            const clientConfigDoc = await adminDb.collection("client_social_configs").doc(clientIdParam).get();
-            if (clientConfigDoc.exists) {
-              const data = clientConfigDoc.data();
-              if (data) {
-                if (platform === "facebook" && data.facebookAppId && data.facebookAppSecret) {
-                  clientId = data.facebookAppId;
-                  clientSecret = data.facebookAppSecret;
-                } else if (platform === "instagram" && data.instagramAppId && data.instagramAppSecret) {
-                  clientId = data.instagramAppId;
-                  clientSecret = data.instagramAppSecret;
-                } else if (platform === "linkedin" && data.linkedinClientId && data.linkedinClientSecret) {
-                  clientId = data.linkedinClientId;
-                  clientSecret = data.linkedinClientSecret;
-                } else if (platform === "tiktok" && data.tiktokKey && data.tiktokSecret) {
-                  clientId = data.tiktokKey;
-                  clientSecret = data.tiktokSecret;
-                } else if (platform === "twitter" && data.twitterClientId && data.twitterClientSecret) {
-                  clientId = data.twitterClientId;
-                  clientSecret = data.twitterClientSecret;
-                }
-              }
+        if (adminDb) {
+          const doc = await adminDb.collection("client_social_configs").doc(agencyClientId).get();
+          const data = doc.data();
+          if (data) {
+            if (pKey === "facebook" && data.facebookAppId && data.facebookAppSecret) {
+              finalId = data.facebookAppId;
+              finalSecret = data.facebookAppSecret;
+            } else if (pKey === "linkedin" && data.linkedinClientId && data.linkedinClientSecret) {
+              finalId = data.linkedinClientId;
+              finalSecret = data.linkedinClientSecret;
             }
-          } catch (fsError) {
-            console.warn("[OAuth] Firestore fallback failed (likely PERMISSION_DENIED):", fsError);
           }
         }
       } catch (e) {
-        console.error("[OAuth] Error fetching client-specific credentials from Prisma:", e);
       }
     }
-    if (!clientId || !clientSecret) {
-      console.log(`[OAuth] Checking global settings in Prisma for ${platform}`);
+    if (!finalId || !finalSecret) {
       try {
-        const globalSettings = await prisma.globalSettings.findUnique({
-          where: { id: "oauth_credentials" }
-        });
-        if (globalSettings) {
-          const data = JSON.parse(globalSettings.data);
-          if (data && data[platform]) {
-            clientId = clientId || data[platform].clientId;
-            clientSecret = clientSecret || data[platform].clientSecret;
-            console.log(`[OAuth] Using global Prisma credentials for ${platform}`);
+        if (adminDb) {
+          const doc = await adminDb.collection("global_settings").doc("oauth_credentials").get();
+          const data = doc.data();
+          if (data && data[pKey] && data[pKey].clientId && data[pKey].clientSecret) {
+            finalId = data[pKey].clientId;
+            finalSecret = data[pKey].clientSecret;
           }
         }
-        if (!clientId || !clientSecret) {
-          console.log(`[OAuth] Checking process.env final fallback for ${platform}`);
-          clientId = clientId || process.env[`${platform.toUpperCase()}_CLIENT_ID`];
-          clientSecret = clientSecret || process.env[`${platform.toUpperCase()}_CLIENT_SECRET`];
-        }
       } catch (e) {
-        console.error("[OAuth] Error fetching global credentials from Prisma:", e);
       }
     }
-    console.log(`[OAuth] Final evaluation for ${platform}:`, {
-      hasClientId: !!clientId,
-      hasClientSecret: !!clientSecret,
-      envUsed: !clientId && !!process.env[`${platform.toUpperCase()}_CLIENT_ID`]
-    });
+    if (pKey === "facebook" && (!finalId || !finalSecret)) {
+      finalId = "1621305335865053";
+      finalSecret = "4e450f5b4fd53d0853a1e4342d943f58";
+    }
     const configs = {
       linkedin: {
         authUrl: "https://www.linkedin.com/oauth/v2/authorization",
         tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",
         scope: "openid profile email w_member_social"
-      },
-      instagram: {
-        authUrl: "https://api.instagram.com/oauth/authorize",
-        tokenUrl: "https://api.instagram.com/oauth/access_token",
-        scope: "instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_insights"
-      },
-      tiktok: {
-        authUrl: "https://www.tiktok.com/v2/auth/authorize/",
-        tokenUrl: "https://open.tiktokapis.com/v2/oauth/token/",
-        scope: "user.info.basic,video.upload,video.publish"
-      },
-      twitter: {
-        authUrl: "https://twitter.com/i/oauth2/authorize",
-        tokenUrl: "https://api.twitter.com/2/oauth2/token",
-        scope: "tweet.read tweet.write users.read offline.access"
       },
       facebook: {
         authUrl: "https://www.facebook.com/v18.0/dialog/oauth",
@@ -289,31 +154,34 @@ async function startServer() {
         scope: "pages_manage_posts,pages_read_engagement,pages_show_list,public_profile"
       }
     };
-    return { ...configs[platform], clientId, clientSecret, redirectUri };
+    return {
+      ...configs[pKey],
+      clientId: finalId,
+      clientSecret: finalSecret,
+      redirectUri: `https://${req.get("host")}/api/auth/${platform}/callback`
+    };
   };
   app.get("/api/auth/:platform", async (req, res) => {
     const { platform } = req.params;
     const { clientId: client_id, mobile } = req.query;
     const config = await getOAuthConfig(platform, req, client_id);
     if (!config.clientId) {
-      return res.status(400).json({ error: `OAuth not configured for ${platform}. Please add credentials in API Settings.` });
+      return res.status(400).json({ error: `OAuth not configured for ${platform}.` });
     }
-    const state = JSON.stringify({
+    const state = Buffer.from(JSON.stringify({
       csrf: Math.random().toString(36).substring(7),
       clientId: client_id,
       mobile: mobile === "true"
-    });
-    const encodedState = Buffer.from(state).toString("base64");
+    })).toString("base64");
     if (req.session) {
       req.session.pendingClientId = client_id;
       req.session.platform = platform;
-      req.session.isMobile = mobile === "true";
     }
     const params = new URLSearchParams({
       response_type: "code",
       client_id: config.clientId,
       redirect_uri: config.redirectUri,
-      state: encodedState,
+      state,
       scope: config.scope
     });
     res.json({ url: `${config.authUrl}?${params.toString()}` });
@@ -321,14 +189,16 @@ async function startServer() {
   app.get("/api/auth/:platform/callback", async (req, res) => {
     const { platform } = req.params;
     const { code, state: encodedState } = req.query;
+    console.log(`[OAuth] Callback started for ${platform}. Code: ${code ? "Yes" : "No"}, State: ${encodedState ? "Yes" : "No"}`);
     let pendingClientId = req.session?.pendingClientId;
+    if (pendingClientId) console.log(`[OAuth] Found pendingClientId in session: ${pendingClientId}`);
     if (!pendingClientId && encodedState) {
       try {
         const decodedState = JSON.parse(Buffer.from(String(encodedState), "base64").toString());
         pendingClientId = decodedState.clientId;
         console.log(`[OAuth] Recovered clientId from state: ${pendingClientId}`);
       } catch (e) {
-        console.error("[OAuth] Failed to decode state:", e);
+        console.error("[OAuth] Failed to decode state:", e.message);
       }
     }
     const config = await getOAuthConfig(platform, req, pendingClientId);
@@ -343,6 +213,7 @@ async function startServer() {
       }), {
         headers: { "Content-Type": "application/x-www-form-urlencoded" }
       });
+      console.log(`[OAuth] Token exchange successful for ${platform}`);
       const { access_token, refresh_token, expires_in, user_id, account_id } = response.data;
       let finalAccessToken = access_token;
       let finalPlatformAccountId = user_id || account_id || response.data.id || response.data.user?.id || response.data.sub;
@@ -362,10 +233,23 @@ async function startServer() {
       }
       if (platform === "facebook") {
         try {
-          const pagesResponse = await axios.get(`https://graph.facebook.com/me/accounts?access_token=${access_token}`);
+          console.log("[OAuth] Exchanging Facebook short-lived token for long-lived token...");
+          const longLivedResponse = await axios.get(`https://graph.facebook.com/v18.0/oauth/access_token`, {
+            params: {
+              grant_type: "fb_exchange_token",
+              client_id: config.clientId,
+              client_secret: config.clientSecret,
+              fb_exchange_token: access_token
+            }
+          });
+          const longLivedToken = longLivedResponse.data.access_token;
+          finalAccessToken = longLivedToken;
+          console.log("[OAuth] Fetching Facebook pages...");
+          const pagesResponse = await axios.get(`https://graph.facebook.com/me/accounts?access_token=${longLivedToken}`);
           const pages = pagesResponse.data.data;
-          const targetPage = pages.find((p) => p.name.includes("Ngoma Zatu")) || pages[0];
+          const targetPage = pages.find((p) => p.name.includes("Ngoma Zatu") || p.tasks?.includes("CREATE_CONTENT")) || pages[0];
           if (targetPage) {
+            console.log(`[OAuth] Linked to Facebook Page: ${targetPage.name}`);
             finalAccessToken = targetPage.access_token;
             finalPlatformAccountId = targetPage.id;
             finalHandle = targetPage.name;
@@ -375,18 +259,24 @@ async function startServer() {
         }
       }
       if (pendingClientId) {
-        await prisma.socialAccount.create({
-          data: {
-            platform,
-            clientId: pendingClientId,
-            accessToken: finalAccessToken,
-            refreshToken: refresh_token || null,
-            platformAccountId: finalPlatformAccountId ? String(finalPlatformAccountId) : null,
-            handle: finalHandle,
-            expiresAt: new Date(Date.now() + (expires_in || 3600) * 1e3),
-            status: "connected"
-          }
-        });
+        const accountData = {
+          platform,
+          clientId: pendingClientId,
+          accessToken: finalAccessToken,
+          refreshToken: refresh_token || null,
+          platformAccountId: finalPlatformAccountId ? String(finalPlatformAccountId) : null,
+          handle: finalHandle,
+          expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + (expires_in || 5184e3) * 1e3)),
+          // Default 60 days for long-lived
+          status: "connected",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+        try {
+          await adminDb.collection("social_accounts").add(accountData);
+          console.log(`[OAuth] Successfully saved ${platform} account to Firestore for client ${pendingClientId}`);
+        } catch (dbError) {
+          console.error(`[OAuth] Critical: Failed to save to Firestore:`, dbError.message);
+        }
       }
       let isMobile = false;
       if (encodedState) {
@@ -396,6 +286,7 @@ async function startServer() {
         } catch (e) {
         }
       }
+      console.log(`[OAuth] Finalizing login. Mobile: ${isMobile}, Platform: ${platform}`);
       if (isMobile) {
         const deepLink = `com.stratos.agencyos://oauth-callback?platform=${platform}&status=success&handle=${encodeURIComponent(finalHandle)}&token=${finalAccessToken}`;
         return res.redirect(deepLink);
@@ -435,20 +326,55 @@ async function startServer() {
           <p>The ${platform} server rejected the request. This usually happens due to a credential or redirect mismatch.</p>
           
           <div style="margin-top: 20px;">
-            <strong>LinkedIn Response Details:</strong>
+            <strong>${platform.toUpperCase()} Response Details:</strong>
             <pre style="background: #1e293b; color: #38bdf8; padding: 15px; border-radius: 8px; margin-top: 10px; overflow-x: auto;">${detailedMessage}</pre>
           </div>
           
           <div style="margin-top: 20px; font-size: 14px; color: #64748b;">
             <strong>Troubleshooting:</strong>
             <ul style="margin-top: 5px;">
-              <li>Check if "Marketing Developer Platform" is added to your LinkedIn app.</li>
-              <li>Ensure your Redirect URIs match exactly.</li>
-              <li>Verify your Client Secret hasn't expired.</li>
+              <li>Ensure your Redirect URIs match correctly in the ${platform} dashboard.</li>
+              <li>Verify your Client ID and Secret are correct.</li>
+              <li>Check if your ${platform} app has the necessary permissions (scopes).</li>
             </ul>
           </div>
         </div>
       `);
+    }
+  });
+  app.get("/api/auth/debug", async (req, res) => {
+    try {
+      console.log("[Debug] Starting Ironclad Firestore check...");
+      let fbConfig = null;
+      let dbReady = false;
+      if (adminDb) {
+        const globalDoc = await adminDb.collection("global_settings").doc("oauth_credentials").get();
+        fbConfig = globalDoc.exists ? globalDoc.data()?.facebook : null;
+        dbReady = true;
+      }
+      const response = {
+        status: "Diagnostic Mode 1.1.7",
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        database: {
+          isInitialized: !!adminDb,
+          isReady: dbReady,
+          projectId: admin.apps.length > 0 ? admin.app().options.projectId : "not_initialized",
+          databaseId: adminDb ? adminDb._databaseId?.database : "none",
+          facebookConfigFound: !!fbConfig,
+          facebookKeys: fbConfig ? {
+            hasClientId: !!fbConfig.clientId,
+            hasClientSecret: !!fbConfig.clientSecret
+          } : "not_found"
+        },
+        environment: {
+          port: process.env.PORT || "default",
+          hasFbClientId: !!process.env.FACEBOOK_CLIENT_ID,
+          hasFbAppId: !!process.env.FACEBOOK_APP_ID
+        }
+      };
+      res.json(response);
+    } catch (e) {
+      res.status(500).json({ error: e.message, stack: e.stack });
     }
   });
   app.post("/api/settings/:id", async (req, res) => {
@@ -588,22 +514,15 @@ async function startServer() {
     const clientId = req.query.clientId;
     if (clientId) {
       try {
-        const clientConfig = await prisma.clientSocialConfig.findUnique({
-          where: { clientId }
-        });
-        if (clientConfig && clientConfig.fbVerifyToken && (platform === "facebook" || platform === "instagram")) {
-          verifyToken = clientConfig.fbVerifyToken;
-        } else {
-          const clientConfigDoc = await adminDb.collection("client_social_configs").doc(clientId).get();
-          if (clientConfigDoc.exists) {
-            const data = clientConfigDoc.data();
-            if (data && data.fbVerifyToken && (platform === "facebook" || platform === "instagram")) {
-              verifyToken = data.fbVerifyToken;
-            }
+        const clientConfigDoc = await adminDb.collection("client_social_configs").doc(clientId).get();
+        if (clientConfigDoc.exists) {
+          const data = clientConfigDoc.data();
+          if (data && data.fbVerifyToken && (platform === "facebook" || platform === "instagram")) {
+            verifyToken = data.fbVerifyToken;
           }
         }
       } catch (e) {
-        console.warn("Error fetching client-specific verify token (likely PERMISSION_DENIED):", e);
+        console.warn("[Webhooks] Firestore verify token lookup failed:", e.message);
       }
     }
     if (mode === "subscribe" && token === verifyToken) {
@@ -815,8 +734,8 @@ async function startServer() {
     const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
     if (!apiKey) return res.status(400).json({ error: "No key" });
     if (apiKey === "MY_GEMINI_API_KEY") return res.status(400).json({ error: "Key is the placeholder 'MY_GEMINI_API_KEY'" });
-    const { GoogleGenAI: GoogleGenAI2 } = await import("@google/genai");
-    const ai = new GoogleGenAI2({ apiKey });
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey });
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -844,20 +763,48 @@ async function startServer() {
       res.status(500).json({ error: error.message, keyPrefix: key?.substring(0, 4) });
     }
   });
-  if (process.env.NODE_ENV !== "production") {
+  const isProd = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
+  if (!isProd) {
+    console.log("[SERVER] Starting in DEVELOPMENT mode (Vite)");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa"
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path2.join(process.cwd(), "dist")));
+    console.log("[SERVER] Starting in PRODUCTION mode (Static)");
+    app.use(express.static(path.join(process.cwd(), "dist")));
     app.get("*", (req, res) => {
-      res.sendFile(path2.join(process.cwd(), "dist", "index.html"));
+      res.sendFile(path.join(process.cwd(), "dist", "index.html"));
     });
   }
-  app.listen(Number(PORT), "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  const startListener = (port) => {
+    return new Promise((resolve, reject) => {
+      const server = app.listen(port, "0.0.0.0", () => {
+        console.log(`[SERVER] Success! Listening on PORT: ${port}`);
+        resolve(server);
+      }).on("error", (err) => {
+        if (err.code === "EADDRINUSE") {
+          console.warn(`[SERVER] PORT ${port} is occupied, trying next...`);
+          resolve(null);
+        } else {
+          reject(err);
+        }
+      });
+    });
+  };
+  const portsToTry = [Number(PORT), 3e3, 8e3, 8081];
+  let success = false;
+  for (const port of portsToTry) {
+    if (success) break;
+    const result = await startListener(port);
+    if (result) {
+      success = true;
+    }
+  }
+  if (!success) {
+    console.error("[SERVER] FATAL: Could not bind to any port!");
+    process.exit(1);
+  }
 }
 startServer();
