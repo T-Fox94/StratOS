@@ -214,7 +214,6 @@ async function startServer() {
     }
 
     // 4. HARDCODED EMERGENCY FALLBACK (Facebook Only)
-    // This ensures connectivity even if all other sources fail.
     const platformKey = platform.toLowerCase();
     if (platformKey === 'facebook' && (!clientId || !clientSecret)) {
       clientId = '1621305335865053';
@@ -226,6 +225,8 @@ async function startServer() {
       hasClientId: !!clientId, 
       hasClientSecret: !!clientSecret
     });
+
+    const redirectUri = `https://${req.get('host')}/api/auth/${platform}/callback`;
     
     const configs: Record<string, any> = {
       linkedin: {
