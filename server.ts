@@ -102,7 +102,7 @@ async function startServer() {
 
     const configs: Record<string, any> = {
       linkedin: { authUrl: 'https://www.linkedin.com/oauth/v2/authorization', tokenUrl: 'https://www.linkedin.com/oauth/v2/accessToken', scope: 'openid profile email w_member_social' },
-      facebook: { authUrl: 'https://www.facebook.com/v18.0/dialog/oauth', tokenUrl: 'https://graph.facebook.com/v18.0/oauth/access_token', scope: 'pages_manage_posts,pages_read_engagement,pages_show_list,public_profile' }
+      facebook: { authUrl: 'https://www.facebook.com/v18.0/dialog/oauth', tokenUrl: 'https://graph.facebook.com/v18.0/oauth/access_token', scope: 'public_profile,email' }
     };
     const cKey = configs[pKey] ? pKey : (isFB ? 'facebook' : pKey);
 
@@ -116,11 +116,20 @@ async function startServer() {
     const { platform } = req.params;
     const { clientId } = req.query;
     const config = await getOAuthConfig(platform, req, clientId as string);
-    if (!config.clientId) return res.status(400).json({ error: `RESET ERROR: No Config for "${platform}" (Handshake: ${platform.toLowerCase().replace(/[^a-z]/g, '')})` });
+    if (!config.clientId) {
+      console.error(`[Handshake] FAILED: No config for "${platform}". pKey was "${pKey}". isFB was ${isFB}`);
+      return res.status(400).json({ error: `V3.1 ERROR: OAuth not configured for "${platform}" (Key: ${pKey}). Check settings.` });
+    }
     
-    const state = Buffer.from(JSON.stringify({ csrf: Math.random().toString(36), clientId, mobile: req.query.mobile === 'true' })).toString('base64');
-    if (req.session) { req.session.pendingClientId = clientId; }
-    res.json({ url: `${config.authUrl}?response_type=code&client_id=${config.clientId}&redirect_uri=${encodeURIComponent(config.redirectUri)}&state=${state}&scope=${encodeURIComponent(config.scope)}` });
+    // Handle "undefined" strings from frontend
+    const finalClientId = (clientId === 'undefined' || !clientId) ? null : clientId;
+
+    const state = Buffer.from(JSON.stringify({ csrf: Math.random().toString(36), clientId: finalClientId, mobile: req.query.mobile === 'true' })).toString('base64');
+    if (req.session) { req.session.pendingClientId = finalClientId; }
+    
+    const finalUrl = `${config.authUrl}?response_type=code&client_id=${config.clientId}&redirect_uri=${encodeURIComponent(config.redirectUri)}&state=${state}&scope=${encodeURIComponent(config.scope)}`;
+    console.log(`[Handshake] REDIRECTING TO: ${finalUrl}`);
+    res.json({ url: finalUrl });
   });
 
   app.get("/api/auth/:platform/callback", async (req, res) => {
