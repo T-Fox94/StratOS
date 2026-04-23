@@ -16,7 +16,7 @@ let prisma: any = null;
 async function startServer() {
   const PORT = process.env.PORT || 8080;
   console.log("-----------------------------------------");
-  console.log("[SERVER] Version 3.5.1 - CRASH PROOFED");
+  console.log("[SERVER] Version 3.6.8 - CRASH PROOFED");
   console.log("-----------------------------------------");
 
   process.on('unhandledRejection', (reason, promise) => {
@@ -54,7 +54,7 @@ async function startServer() {
   const credentialCache: Record<string, any> = {};
 
   // 2. Health & Manifest
-  app.get("/health", (req, res) => res.json({ status: "OK", version: "3.6.1", platform: process.platform }));
+  app.get("/health", (req, res) => res.json({ status: "OK", version: "3.6.8", platform: process.platform }));
   
   // 3. Middlewares
   app.use(helmet({ contentSecurityPolicy: false }));
@@ -189,10 +189,23 @@ async function startServer() {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
+  app.get("/api/debug-paths", (req, res) => {
+    const dPath = path.join(process.cwd(), "dist");
+    try {
+      const files = fs.readdirSync(process.cwd());
+      const distFiles = fs.existsSync(dPath) ? fs.readdirSync(dPath) : ['DIST_MISSING'];
+      res.json({ cwd: process.cwd(), rootFiles: files, distFiles: distFiles });
+    } catch (e: any) { res.json({ error: e.message }); }
+  });
+
+  app.get("/api/debug-env", (req, res) => {
+    res.json({ env: process.env.NODE_ENV, service: process.env.K_SERVICE });
+  });
+
   // Static Assets
   const isProd = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;
   if (!isProd) {
-    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa", base: '/' });
     app.use(vite.middlewares);
   } else {
     const dPath = path.join(process.cwd(), "dist");
@@ -201,7 +214,7 @@ async function startServer() {
     app.get("*", (req, res) => { res.sendFile(path.join(dPath, "index.html")); });
   }
 
-  app.listen(PORT, "0.0.0.0", () => { console.log(`[SERVER] Version 3.6.2 Running on ${PORT}`); });
+  app.listen(PORT, "0.0.0.0", () => { console.log(`[SERVER] Version 3.6.8 Running on ${PORT}`); });
 }
 
 startServer();
