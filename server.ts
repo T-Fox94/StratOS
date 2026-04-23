@@ -135,7 +135,7 @@ async function startServer() {
     const state = Buffer.from(JSON.stringify({ csrf: Math.random().toString(36), clientId: finalClientId, mobile: req.query.mobile === 'true' })).toString('base64');
     if (req.session) { req.session.pendingClientId = finalClientId; }
     
-    const finalUrl = `${config.authUrl}?response_type=code&client_id=${config.clientId}&redirect_uri=${encodeURIComponent(config.redirectUri)}&state=${state}&scope=${encodeURIComponent(config.scope)}${pKey === 'facebook' ? '&config_id=955148300723603' : ''}`;
+    const finalUrl = `${config.authUrl}?response_type=code&client_id=${config.clientId}&redirect_uri=${encodeURIComponent(config.redirectUri)}&state=${state}&scope=${encodeURIComponent(config.scope)}${pKey === 'facebook' ? '&config_id=955148300723603&auth_type=rerequest' : ''}`;
     console.log(`[Handshake] REDIRECTING TO: ${finalUrl}`);
     res.json({ url: finalUrl });
   });
