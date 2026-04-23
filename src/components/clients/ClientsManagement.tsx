@@ -226,6 +226,12 @@ export function ClientsManagement() {
   };
 
   const handleCardClick = (client: Client) => {
+    setCurrentClient(client);
+    toast.success(`Active client set to ${client.name}`);
+  };
+
+  const handleViewDetails = (e: React.MouseEvent, client: Client) => {
+    e.stopPropagation();
     setSelectedClientDetails(client);
   };
 
@@ -333,47 +339,36 @@ export function ClientsManagement() {
               </div>
             </div>
 
-              <div className="flex items-center gap-2 sm:gap-4">
-                {currentClient?.id !== client.id && (
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCurrentClient(client);
-                      toast.success(`Active client set to ${client.name}`);
-                    }}
-                    className="hidden sm:flex px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-indigo-700 transition-all"
-                  >
-                    Select
-                  </button>
-                )}
-                
-                <div className={cn(
-                  "px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg flex items-center gap-1 sm:gap-1.5 border",
-                  client.status === 'active' 
-                    ? (currentClient?.id === client.id ? "bg-white/10 border-white/20 text-white" : "bg-slate-50 dark:bg-slate-700/50 border-slate-100 dark:border-slate-600 text-slate-900 dark:text-slate-200")
-                    : "bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-900/30 text-amber-700 dark:text-amber-400"
-                )}>
-                {client.status === 'active' ? <CheckCircle2 size={12} /> : <Clock size={12} />}
-                <span className="text-[10px] font-bold uppercase tracking-widest">
-                  {client.status === 'active' ? 'Active' : 'On Hold'}
-                </span>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={(e) => handleViewDetails(e, client)}
+                  className={cn(
+                    "p-2.5 rounded-xl transition-all flex items-center justify-center border",
+                    currentClient?.id === client.id 
+                      ? "bg-white/10 border-white/20 text-white hover:bg-white/20" 
+                      : "bg-slate-50 dark:bg-slate-700/50 border-slate-100 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-600"
+                  )}
+                  title="View Client Details"
+                >
+                  <ExternalLink size={18} />
+                </button>
+
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenModal(client);
+                  }}
+                  className={cn(
+                    "p-2.5 rounded-xl transition-all flex items-center justify-center border",
+                    currentClient?.id === client.id 
+                      ? "bg-white/10 border-white/20 text-white hover:bg-white/20" 
+                      : "bg-slate-50 dark:bg-slate-700/50 border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-600"
+                  )}
+                  title="Edit Client"
+                >
+                  <Edit2 size={18} />
+                </button>
               </div>
-              
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleOpenModal(client);
-                }}
-                className={cn(
-                  "p-2.5 rounded-xl transition-all flex items-center justify-center",
-                  currentClient?.id === client.id 
-                    ? "bg-white/20 text-white hover:bg-white/30" 
-                    : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
-                )}
-              >
-                <Edit2 size={18} />
-              </button>
-            </div>
           </motion.div>
         ))}
       </div>
