@@ -125,8 +125,8 @@ async function startServer() {
     const { clientId } = req.query;
     const config = await getOAuthConfig(platform, req, clientId as string);
     if (!config.clientId) {
-      console.error(`[Handshake] FAILED: No config for "${platform}". pKey was "${pKey}". isFB was ${isFB}`);
-      return res.status(400).json({ error: `V3.1 ERROR: OAuth not configured for "${platform}" (Key: ${pKey}). Check settings.` });
+      console.error(`[Handshake] FAILED: No config for "${platform}".`);
+      return res.status(400).json({ error: `V3.6 ERROR: OAuth not configured for "${platform}". Check settings.` });
     }
     
     // Handle "undefined" strings from frontend
@@ -188,11 +188,13 @@ async function startServer() {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.join(process.cwd(), "dist")));
-    app.get("*", (req, res) => { res.sendFile(path.join(process.cwd(), "dist", "index.html")); });
+    const dPath = path.join(process.cwd(), "dist");
+    console.log(`[Static] Serving from: ${dPath} (Exists: ${fs.existsSync(dPath)})`);
+    app.use(express.static(dPath));
+    app.get("*", (req, res) => { res.sendFile(path.join(dPath, "index.html")); });
   }
 
-  app.listen(PORT, "0.0.0.0", () => { console.log(`[SERVER] Version 3.0.0 Running on ${PORT}`); });
+  app.listen(PORT, "0.0.0.0", () => { console.log(`[SERVER] Version 3.6.2 Running on ${PORT}`); });
 }
 
 startServer();
