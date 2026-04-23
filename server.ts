@@ -102,7 +102,7 @@ async function startServer() {
 
     const configs: Record<string, any> = {
       linkedin: { authUrl: 'https://www.linkedin.com/oauth/v2/authorization', tokenUrl: 'https://www.linkedin.com/oauth/v2/accessToken', scope: 'openid profile email w_member_social' },
-      facebook: { authUrl: 'https://www.facebook.com/v18.0/dialog/oauth', tokenUrl: 'https://graph.facebook.com/v18.0/oauth/access_token', scope: 'public_profile,email' }
+      facebook: { authUrl: 'https://www.facebook.com/v18.0/dialog/oauth', tokenUrl: 'https://graph.facebook.com/v18.0/oauth/access_token', scope: 'public_profile' }
     };
     const cKey = configs[pKey] ? pKey : (isFB ? 'facebook' : pKey);
 
