@@ -54,7 +54,7 @@ async function startServer() {
   const credentialCache: Record<string, any> = {};
 
   // 2. Health & Manifest
-  app.get("/health", (req, res) => res.json({ status: "OK", version: "3.5.1", platform: process.platform }));
+  app.get("/health", (req, res) => res.json({ status: "OK", version: "3.6.1", platform: process.platform }));
   
   // 3. Middlewares
   app.use(helmet({ contentSecurityPolicy: false }));
