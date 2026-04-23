@@ -16,8 +16,16 @@ let prisma: any = null;
 async function startServer() {
   const PORT = process.env.PORT || 8080;
   console.log("-----------------------------------------");
-  console.log("[SERVER] Version 3.0.0 - NUCLEAR RESET");
+  console.log("[SERVER] Version 3.5.1 - CRASH PROOFED");
   console.log("-----------------------------------------");
+
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('[CRASH GUARD] Unhandled Rejection at:', promise, 'reason:', reason);
+  });
+
+  process.on('uncaughtException', (err) => {
+    console.error('[CRASH GUARD] Uncaught Exception:', err.message);
+  });
 
   // 1. DB Init
   try {
@@ -46,7 +54,7 @@ async function startServer() {
   const credentialCache: Record<string, any> = {};
 
   // 2. Health & Manifest
-  app.get("/health", (req, res) => res.json({ status: "OK", version: "3.0.0", platform: process.platform }));
+  app.get("/health", (req, res) => res.json({ status: "OK", version: "3.5.1", platform: process.platform }));
   
   // 3. Middlewares
   app.use(helmet({ contentSecurityPolicy: false }));
