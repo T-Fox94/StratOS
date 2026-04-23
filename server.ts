@@ -181,6 +181,13 @@ async function startServer() {
   app.get("/api/posts", async (req, res) => { res.json(await prisma.post.findMany({ where: req.query.clientId ? { clientId: String(req.query.clientId) } : {}, orderBy: { createdAt: 'desc' } })); });
   app.get("/api/settings/:id", async (req, res) => { const s = await prisma.globalSettings.findUnique({ where: { id: req.params.id } }); res.json(s ? JSON.parse(s.data) : {}); });
   app.post("/api/settings/:id", async (req, res) => { const s = await prisma.globalSettings.upsert({ where: { id: req.params.id }, update: { data: JSON.stringify(req.body) }, create: { id: req.params.id, data: JSON.stringify(req.body) } }); res.json(JSON.parse(s.data)); });
+  app.delete("/api/social/:id", async (req, res) => {
+    const { id } = req.params;
+    try {
+      await prisma.socialAccount.delete({ where: { id } });
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
 
   // Static Assets
   const isProd = process.env.NODE_ENV === "production" || !!process.env.K_SERVICE;

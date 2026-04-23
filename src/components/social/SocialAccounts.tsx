@@ -431,6 +431,22 @@ export function SocialAccounts() {
                         )}>
                           {account.status}
                         </span>
+                        
+                        <button 
+                          onClick={() => {
+                            if (window.confirm('Are you sure you want to disconnect this account?')) {
+                              handleDisconnect(account.id);
+                            }
+                          }}
+                          className={cn(
+                            "p-1.5 rounded-lg transition-colors hover:text-rose-500",
+                            theme === 'dark' ? "text-slate-500 hover:bg-slate-700" : "text-slate-400 hover:bg-white"
+                          )}
+                          title="Disconnect Account"
+                        >
+                          <LucideX size={18} />
+                        </button>
+
                         <DropdownMenu>
                           <DropdownMenuTrigger render={
                             <button className={cn(

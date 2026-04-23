@@ -222,9 +222,9 @@ export const useAgencyStore = create<AgencyState>()(
       notifications: [],
       agencySettings: {
         name: 'StratOS Agency',
-        defaultHourlyRate: 150,
-        currency: 'USD',
-        timezone: 'UTC'
+        defaultHourlyRate: 2500,
+        currency: 'ZMW',
+        timezone: 'CAT'
       },
       activeView: 'overview',
       sidebarOpen: true,
