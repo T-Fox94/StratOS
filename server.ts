@@ -102,7 +102,7 @@ async function startServer() {
 
     const configs: Record<string, any> = {
       linkedin: { authUrl: 'https://www.linkedin.com/oauth/v2/authorization', tokenUrl: 'https://www.linkedin.com/oauth/v2/accessToken', scope: 'openid profile email w_member_social' },
-      facebook: { authUrl: 'https://www.facebook.com/v18.0/dialog/oauth', tokenUrl: 'https://graph.facebook.com/v18.0/oauth/access_token', scope: 'public_profile' }
+      facebook: { authUrl: 'https://www.facebook.com/v18.0/dialog/oauth', tokenUrl: 'https://graph.facebook.com/v18.0/oauth/access_token', scope: 'pages_show_list,public_profile' }
     };
     const cKey = configs[pKey] ? pKey : (isFB ? 'facebook' : pKey);
 
@@ -127,7 +127,7 @@ async function startServer() {
     const state = Buffer.from(JSON.stringify({ csrf: Math.random().toString(36), clientId: finalClientId, mobile: req.query.mobile === 'true' })).toString('base64');
     if (req.session) { req.session.pendingClientId = finalClientId; }
     
-    const finalUrl = `${config.authUrl}?response_type=code&client_id=${config.clientId}&redirect_uri=${encodeURIComponent(config.redirectUri)}&state=${state}&scope=${encodeURIComponent(config.scope)}`;
+    const finalUrl = `${config.authUrl}?response_type=code&client_id=${config.clientId}&redirect_uri=${encodeURIComponent(config.redirectUri)}&state=${state}&scope=${encodeURIComponent(config.scope)}${pKey === 'facebook' ? '&config_id=955148300723603' : ''}`;
     console.log(`[Handshake] REDIRECTING TO: ${finalUrl}`);
     res.json({ url: finalUrl });
   });
