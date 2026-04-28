@@ -4,7 +4,7 @@ import * as fs from 'fs';
 
 // Use available credentials in the workspace
 const firebaseConfig = {
-  projectId: "stratos-1d3dd",
+  projectId: process.env.GOOGLE_CLOUD_PROJECT || "stratos-1d3dd",
 };
 
 const app = initializeApp(firebaseConfig);
@@ -12,11 +12,19 @@ const db = getFirestore(app);
 
 async function injectFacebookCredentials() {
   console.log("🚀 Injecting Facebook Global Credentials...");
-  
+
+  const clientId = process.env.FACEBOOK_CLIENT_ID;
+  const clientSecret = process.env.FACEBOOK_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    console.error("❌ FACEBOOK_CLIENT_ID and FACEBOOK_CLIENT_SECRET must be set in environment.");
+    process.exit(1);
+  }
+
   const credentials = {
     facebook: {
-      clientId: "1621305335865053",
-      clientSecret: "4e450f5b4fd53d0853a1e4342d943f58"
+      clientId,
+      clientSecret
     },
     updatedAt: new Date().toISOString()
   };

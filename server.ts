@@ -1,6 +1,7 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
+import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { PrismaClient } from "@prisma/client";
 import path from "path";
@@ -57,14 +58,54 @@ async function startServer() {
   app.get("/health", (req, res) => res.json({ status: "OK", version: "3.6.8", platform: process.platform }));
   
   // 3. Middlewares
-  app.use(helmet({ contentSecurityPolicy: false }));
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "https://api.spotify.com", "https://api.linkedin.com", "https://graph.facebook.com", "https://api.twitter.com"]
+      }
+    }
+  }));
   app.use(cors({ origin: ["https://localhost", "http://localhost:5173", /\.run\.app$/], credentials: true }));
   app.use(express.json());
+  if (!process.env.SESSION_SECRET) {
+    throw new Error('SESSION_SECRET environment variable is required');
+  }
   app.use(cookieSession({
     name: '__Host-session',
-    keys: [process.env.SESSION_SECRET || 'stratos-production-fallback'],
+    keys: [process.env.SESSION_SECRET],
     maxAge: 24 * 60 * 60 * 1000, secure: true, httpOnly: true, sameSite: 'lax'
   }));
+
+  // 3b. Firebase Auth Middleware for /api/* routes (except /api/auth/*)
+  const verifyFirebaseToken = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    // Skip auth for OAuth callback routes
+    if (req.path.startsWith('/api/auth/')) {
+      return next();
+    }
+    // Skip for non-API routes
+    if (!req.path.startsWith('/api/')) {
+      return next();
+    }
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing or invalid authorization header' });
+    }
+    const token = authHeader.split('Bearer ')[1];
+    try {
+      // NOTE: Firebase Admin SDK must be initialized with proper credentials
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      (req as any).user = decodedToken;
+      next();
+    } catch (error) {
+      console.warn('[Auth] Token verification failed:', (error as Error).message);
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+  };
+  app.use(verifyFirebaseToken);
 
   // 4. THE HANDSHAKE
   const getOAuthConfig = async (platform: string, req: express.Request, agencyClientId?: string) => {
@@ -102,10 +143,9 @@ async function startServer() {
       } catch (e) {}
     }
 
-    // ABSOLUTE FALLBACK
+    // No hardcoded fallback — credentials must come from env or Firestore
     if (isFB && (!fId || !fSecret)) {
-      console.log("[Handshake] EMERGENCY FACEBOOK FALLBACK ACTIVATED");
-      fId = '1621305335865053'; fSecret = '4e450f5b4fd53d0853a1e4342d943f58';
+      console.warn("[Handshake] Facebook credentials not found in env or Firestore. Configure them in settings.");
     }
 
     const configs: Record<string, any> = {
@@ -132,7 +172,7 @@ async function startServer() {
     // Handle "undefined" strings from frontend
     const finalClientId = (clientId === 'undefined' || !clientId) ? null : clientId;
 
-    const state = Buffer.from(JSON.stringify({ csrf: Math.random().toString(36), clientId: finalClientId, mobile: req.query.mobile === 'true' })).toString('base64');
+    const state = Buffer.from(JSON.stringify({ csrf: crypto.randomUUID(), clientId: finalClientId, mobile: req.query.mobile === 'true' })).toString('base64');
     if (req.session) { req.session.pendingClientId = finalClientId; }
     
     const finalUrl = `${config.authUrl}?response_type=code&client_id=${config.clientId}&redirect_uri=${encodeURIComponent(config.redirectUri)}&state=${state}&scope=${encodeURIComponent(config.scope)}`;
@@ -177,19 +217,55 @@ async function startServer() {
   });
 
   // Prisma API Proxies
-  app.get("/api/clients", async (req, res) => { res.json(await prisma.client.findMany({ include: { socialAccounts: true } })); });
-  app.get("/api/posts", async (req, res) => { res.json(await prisma.post.findMany({ where: req.query.clientId ? { clientId: String(req.query.clientId) } : {}, orderBy: { createdAt: 'desc' } })); });
-  app.get("/api/settings/:id", async (req, res) => { const s = await prisma.globalSettings.findUnique({ where: { id: req.params.id } }); res.json(s ? JSON.parse(s.data) : {}); });
-  app.post("/api/settings/:id", async (req, res) => { const s = await prisma.globalSettings.upsert({ where: { id: req.params.id }, update: { data: JSON.stringify(req.body) }, create: { id: req.params.id, data: JSON.stringify(req.body) } }); res.json(JSON.parse(s.data)); });
+  app.get("/api/clients", async (req, res) => {
+    try {
+      const clients = await prisma.client.findMany({ include: { socialAccounts: true } });
+      res.json(clients);
+    } catch (e: any) {
+      console.error("[API] Error fetching clients:", e.message);
+      res.status(500).json({ error: "Failed to fetch clients" });
+    }
+  });
+  app.get("/api/posts", async (req, res) => {
+    try {
+      const posts = await prisma.post.findMany({ where: req.query.clientId ? { clientId: String(req.query.clientId) } : {}, orderBy: { createdAt: 'desc' } });
+      res.json(posts);
+    } catch (e: any) {
+      console.error("[API] Error fetching posts:", e.message);
+      res.status(500).json({ error: "Failed to fetch posts" });
+    }
+  });
+  app.get("/api/settings/:id", async (req, res) => {
+    try {
+      const s = await prisma.globalSettings.findUnique({ where: { id: req.params.id } });
+      res.json(s ? JSON.parse(s.data) : {});
+    } catch (e: any) {
+      console.error("[API] Error fetching settings:", e.message);
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+  app.post("/api/settings/:id", async (req, res) => {
+    try {
+      const s = await prisma.globalSettings.upsert({ where: { id: req.params.id }, update: { data: JSON.stringify(req.body) }, create: { id: req.params.id, data: JSON.stringify(req.body) } });
+      res.json(JSON.parse(s.data));
+    } catch (e: any) {
+      console.error("[API] Error updating settings:", e.message);
+      res.status(500).json({ error: "Failed to update settings" });
+    }
+  });
   app.delete("/api/social/:id", async (req, res) => {
     const { id } = req.params;
     try {
       await prisma.socialAccount.delete({ where: { id } });
       res.json({ success: true });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
+    } catch (e: any) {
+      console.error("[API] Error deleting social account:", e.message);
+      res.status(500).json({ error: e.message });
+    }
   });
 
   app.get("/api/debug-paths", (req, res) => {
+    if (process.env.NODE_ENV !== 'development') return res.status(404).json({ error: 'Not found' });
     const dPath = path.join(process.cwd(), "dist");
     try {
       const files = fs.readdirSync(process.cwd());
@@ -199,6 +275,7 @@ async function startServer() {
   });
 
   app.get("/api/debug-env", (req, res) => {
+    if (process.env.NODE_ENV !== 'development') return res.status(404).json({ error: 'Not found' });
     res.json({ env: process.env.NODE_ENV, service: process.env.K_SERVICE });
   });
 

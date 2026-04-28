@@ -35,7 +35,8 @@ export function Overview() {
     setCrisisEvents,
     setActiveView,
     scopeRequests,
-    agencySettings
+    agencySettings,
+    trends
   } = useAgencyStore();
 
   const currencySymbol = getCurrencySymbol(agencySettings.currency);
@@ -313,7 +314,7 @@ export function Overview() {
               <h3 className="text-sm font-bold uppercase tracking-wider">Trending Opportunities</h3>
             </div>
             <div className="space-y-4">
-              {useAgencyStore.getState().trends.length > 0 ? useAgencyStore.getState().trends.slice(0, 3).map(trend => (
+              {trends.length > 0 ? trends.slice(0, 3).map(trend => (
                 <div key={trend.id} className="p-3 bg-slate-800 rounded-xl border border-slate-700 hover:border-indigo-500 transition-colors cursor-pointer">
                   <div className="flex justify-between items-start mb-1">
                     <p className="text-sm font-semibold">{trend.name}</p>

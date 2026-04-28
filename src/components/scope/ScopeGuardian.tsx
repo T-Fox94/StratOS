@@ -20,12 +20,12 @@ import { toast } from 'sonner';
 import { useAgencyStore, ScopeRequest, getCurrencySymbol } from '../../store/useAgencyStore';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '../../firebase';
-import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, collection, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../../lib/utils';
 
 export function ScopeGuardian() {
-  const { currentClient, scopeRequests, theme, agencySettings } = useAgencyStore();
+  const { currentClient, scopeRequests, theme, agencySettings, clients } = useAgencyStore();
   const { profile } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRequest, setEditingRequest] = useState<ScopeRequest | null>(null);
@@ -65,7 +65,7 @@ export function ScopeGuardian() {
     e.preventDefault();
     if (!currentClient) return;
 
-    const requestId = editingRequest ? editingRequest.id : Math.random().toString(36).substr(2, 9);
+    const requestId = editingRequest ? editingRequest.id : doc(collection(db, 'scope_requests')).id;
     const requestData = {
       ...formData,
       id: requestId,
@@ -251,7 +251,7 @@ export function ScopeGuardian() {
                 <tr key={req.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors group">
                   <td className="px-8 py-5">
                     <span className="text-sm font-bold text-slate-900 dark:text-white">
-                      {useAgencyStore.getState().clients.find(c => c.id === req.clientId)?.name || 'Unknown'}
+                      {clients.find(c => c.id === req.clientId)?.name || 'Unknown'}
                     </span>
                   </td>
                   <td className="px-8 py-5">

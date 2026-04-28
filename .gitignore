@@ -1,7 +1,12 @@
 node_modules/
 build/
 coverage/
+dist/
 .DS_Store
 *.log
+*.db
 .env*
 !.env.example
+firebase-applet-config.json
+android/app/google-services.json
+prisma/dev.db

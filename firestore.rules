@@ -113,7 +113,7 @@ service cloud.firestore {
     function isValidCrisis(data) {
       return data.clientId is string &&
              data.title is string && data.title.size() > 0 &&
-             data.severity in ['low', 'medium', 'high'] &&
+             data.severity in ['low', 'medium', 'high', 'critical'] &&
              data.status in ['active', 'resolved'];
     }
 

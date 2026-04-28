@@ -1,3 +1,4 @@
+// TODO: Move Gemini calls to backend API to protect API key
 import { GoogleGenAI, Modality, Type, FunctionDeclaration } from "@google/genai";
 import { db } from "../firebase";
 import { doc, getDoc, updateDoc, addDoc, collection, deleteDoc, serverTimestamp } from "firebase/firestore";

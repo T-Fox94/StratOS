@@ -8,9 +8,7 @@ export default defineConfig(({mode}) => {
   return {
     base: './',
     plugins: [react(), tailwindcss()],
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || ''),
-    },
+    // GEMINI_API_KEY removed from client bundle — must be handled server-side
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

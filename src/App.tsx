@@ -38,10 +38,7 @@ function AppContent() {
   const { activeView, theme, sidebarOpen } = useAgencyStore();
   const { user, loading } = useAuth();
 
-  console.log('AppContent Rendering:', { activeView, theme, loading, hasUser: !!user });
-  if (user) {
-    console.log('User Email Verified:', user.emailVerified);
-  }
+
 
   // Sync data with Firestore
   useFirestoreSync();
@@ -50,7 +47,6 @@ function AppContent() {
   usePushNotifications();
 
   React.useEffect(() => {
-    console.log('Theme Effect Triggered:', theme);
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -59,7 +55,6 @@ function AppContent() {
   }, [theme]);
 
   if (loading) {
-    console.log('App is Loading...');
     return (
       <div className="h-screen bg-slate-900 flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
@@ -68,11 +63,36 @@ function AppContent() {
   }
 
   if (!user) {
-    console.log('Redirecting to LoginPage because: No User');
     return <LoginPage />;
   }
 
-  console.log('Rendering Main View:', activeView);
+  if (!user.emailVerified) {
+    return (
+      <div className="h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-800 p-8 text-center space-y-4">
+          <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-2xl flex items-center justify-center mx-auto">
+            <span className="text-3xl">📧</span>
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Verify Your Email</h1>
+          <p className="text-slate-500 dark:text-slate-400">
+            We sent a verification link to <strong>{user.email}</strong>. Please check your inbox and verify your email to continue.
+          </p>
+          <button
+            onClick={() => user.sendEmailVerification()}
+            className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 transition-all"
+          >
+            Resend Verification Email
+          </button>
+          <button
+            onClick={() => window.location.reload()}
+            className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+          >
+            I've verified — refresh
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const renderView = () => {
     switch (activeView) {

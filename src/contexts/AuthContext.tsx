@@ -44,19 +44,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
-        console.log("Auth state changed:", firebaseUser?.email);
         setUser(firebaseUser);
         
         if (firebaseUser) {
           // Fetch profile from Firestore
-          console.log("Fetching profile for:", firebaseUser.uid);
           const profileDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (profileDoc.exists()) {
             const data = profileDoc.data() as UserProfile;
-            console.log("Profile found:", data.role);
             // Ensure super-admin always has admin role in profile
             if (firebaseUser.email?.toLowerCase() === 'mubangaphiri94@gmail.com' && data.role !== 'admin') {
-              console.log("Updating super-admin role to admin");
               const updatedProfile = { ...data, role: 'admin' as const };
               await setDoc(doc(db, 'users', firebaseUser.uid), updatedProfile, { merge: true });
               setProfile(updatedProfile);
@@ -65,14 +61,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           } else {
             // If profile doesn't exist (e.g. first time Google login), create a default one
-            console.log("Creating default profile for super-admin check");
             const newProfile: UserProfile = {
               uid: firebaseUser.uid,
               email: firebaseUser.email || '',
               displayName: firebaseUser.displayName || '',
               role: firebaseUser.email?.toLowerCase() === 'mubangaphiri94@gmail.com' ? 'admin' : 'manager'
             };
-            console.log("Setting new profile:", newProfile.role);
             await setDoc(doc(db, 'users', firebaseUser.uid), {
               ...newProfile,
               createdAt: serverTimestamp()
@@ -83,8 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(null);
         }
       } catch (error) {
-        console.error("Auth State Change Error Detail:", error);
-        // Even if profile fetch fails, we should stop loading
+        console.error("Auth state change error:", error);
       } finally {
         setLoading(false);
       }
